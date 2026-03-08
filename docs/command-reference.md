@@ -45,6 +45,8 @@ Sets `ZADDEDAPP.ZACTIVECLUSTERID`.
 
 Lists clusters, optionally scoped to one app.
 
+The table shows the owning app name and is sorted by app name, then cluster name.
+
 ### `clusters show <cluster-ref> --app <app>`
 
 Shows cluster JSON including enabled server IDs.

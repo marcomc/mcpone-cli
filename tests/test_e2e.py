@@ -17,6 +17,13 @@ def test_version_flag_outputs_package_version(runner) -> None:
     assert result.stdout.strip() == "0.1.0"
 
 
+@pytest.mark.parametrize("group_name", ["apps", "clusters", "servers", "market", "sync", "import"])
+def test_command_groups_show_help_without_subcommand(runner, group_name: str) -> None:
+    result = runner.invoke(app, [group_name])
+    assert "Usage:" in result.stdout
+    assert "Missing command." not in result.stdout
+
+
 def test_market_install_and_sync_to_codex(runner, temp_db: Path, resources_dir: Path) -> None:
     result = runner.invoke(
         app,
@@ -164,6 +171,44 @@ def test_add_server_and_enable_across_multiple_clusters(
     testing_payload = json.loads(testing_cluster.stdout)
     assert server_id in default_payload["enabled_server_ids"]
     assert server_id in testing_payload["enabled_server_ids"]
+
+
+def test_clusters_list_shows_app_name_and_sorts_by_app(
+    runner, temp_db: Path, resources_dir: Path
+) -> None:
+    config_file = _config_file(temp_db, resources_dir)
+    other_config = temp_db.parent / "other.json"
+
+    _add_custom_app(runner, config_file, "Alpha App", other_config, "mcpServers")
+
+    create_cluster = runner.invoke(
+        app,
+        [
+            "--config",
+            str(config_file),
+            "clusters",
+            "create",
+            "Zeta",
+            "--app",
+            "Alpha App",
+        ],
+    )
+    assert create_cluster.exit_code == 0, create_cluster.output
+
+    list_result = runner.invoke(
+        app,
+        [
+            "--config",
+            str(config_file),
+            "clusters",
+            "list",
+        ],
+    )
+    assert list_result.exit_code == 0, list_result.output
+    assert "App PK" not in list_result.output
+    assert "Alpha App" in list_result.output
+    assert "Codex" in list_result.output
+    assert list_result.output.index("Alpha App") < list_result.output.index("Codex")
 
 
 @pytest.mark.parametrize(

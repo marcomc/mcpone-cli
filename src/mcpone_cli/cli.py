@@ -26,12 +26,15 @@ app = typer.Typer(
     invoke_without_command=True,
     no_args_is_help=True,
 )
-apps_app = typer.Typer(help="Manage McpOne apps.")
-clusters_app = typer.Typer(help="Manage McpOne clusters.")
-servers_app = typer.Typer(help="Manage McpOne servers.")
-market_app = typer.Typer(help="Inspect and install market tools.")
-sync_app = typer.Typer(help="Sync McpOne state to agent config files.")
-import_app = typer.Typer(help="Import agent config files into McpOne.")
+apps_app = typer.Typer(help="Manage McpOne apps.", invoke_without_command=True)
+clusters_app = typer.Typer(help="Manage McpOne clusters.", invoke_without_command=True)
+servers_app = typer.Typer(help="Manage McpOne servers.", invoke_without_command=True)
+market_app = typer.Typer(help="Inspect and install market tools.", invoke_without_command=True)
+sync_app = typer.Typer(
+    help="Sync McpOne state to agent config files.",
+    invoke_without_command=True,
+)
+import_app = typer.Typer(help="Import agent config files into McpOne.", invoke_without_command=True)
 
 app.add_typer(apps_app, name="apps")
 app.add_typer(clusters_app, name="clusters")
@@ -74,6 +77,12 @@ def _version_callback(value: bool) -> None:
         raise typer.Exit()
 
 
+def _group_help_callback(ctx: typer.Context) -> None:
+    if ctx.invoked_subcommand is None:
+        console.print(ctx.get_help())
+        raise typer.Exit()
+
+
 def _parse_target(raw: str) -> tuple[str, str]:
     for separator in ("::", "/"):
         if separator in raw:
@@ -102,6 +111,36 @@ def main_callback(
         resources_dir=settings.resources_dir,
         backup_on_write=settings.backup_on_write,
     )
+
+
+@apps_app.callback()
+def apps_callback(ctx: typer.Context) -> None:
+    _group_help_callback(ctx)
+
+
+@clusters_app.callback()
+def clusters_callback(ctx: typer.Context) -> None:
+    _group_help_callback(ctx)
+
+
+@servers_app.callback()
+def servers_callback(ctx: typer.Context) -> None:
+    _group_help_callback(ctx)
+
+
+@market_app.callback()
+def market_callback(ctx: typer.Context) -> None:
+    _group_help_callback(ctx)
+
+
+@sync_app.callback()
+def sync_callback(ctx: typer.Context) -> None:
+    _group_help_callback(ctx)
+
+
+@import_app.callback()
+def import_callback(ctx: typer.Context) -> None:
+    _group_help_callback(ctx)
 
 
 @apps_app.command("list")
@@ -171,10 +210,15 @@ def apps_set_active_cluster(ctx: typer.Context, app_ref: str, cluster_ref: str):
 @clusters_app.command("list")
 def clusters_list(ctx: typer.Context, app_name: str | None = typer.Option(None, "--app")):
     runtime = _state(ctx)
-    table = Table("App PK", "Name", "Cluster ID", "Enabled")
-    for cluster in runtime.store.list_clusters(app_name):
+    apps_by_pk = {item.pk: item.name for item in runtime.store.list_apps()}
+    clusters = sorted(
+        runtime.store.list_clusters(app_name),
+        key=lambda item: (apps_by_pk.get(item.app_pk, ""), item.name.casefold()),
+    )
+    table = Table("App", "Name", "Cluster ID", "Enabled")
+    for cluster in clusters:
         table.add_row(
-            str(cluster.app_pk),
+            apps_by_pk.get(cluster.app_pk, str(cluster.app_pk)),
             cluster.name,
             cluster.cluster_id,
             str(len(cluster.enabled_server_ids)),
