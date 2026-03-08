@@ -30,7 +30,7 @@ The implementation is grounded in first-party McpOne artifacts:
 
 ## Documentation Map
 
-- End users: [`docs/user-guide.md`](docs/user-guide.md)
+- Users: [`docs/user-guide.md`](docs/user-guide.md)
 - Contributors: [`docs/developer-guide.md`](docs/developer-guide.md)
 - Full command list: [`docs/command-reference.md`](docs/command-reference.md)
 - Architecture and sync design: [`docs/architecture.md`](docs/architecture.md)
@@ -41,6 +41,7 @@ The implementation is grounded in first-party McpOne artifacts:
 - Market install spec: [`docs/market-install-spec.md`](docs/market-install-spec.md)
 - Testing guide: [`docs/testing-guide.md`](docs/testing-guide.md)
 - Release workflow: [`docs/release-workflow.md`](docs/release-workflow.md)
+- Known bug investigations: [`docs/bug-report-antigravity-sync.md`](docs/bug-report-antigravity-sync.md)
 
 ## Requirements
 
