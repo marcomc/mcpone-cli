@@ -21,12 +21,18 @@ def apple_timestamp_now() -> float:
     return time.time() - APPLE_EPOCH_OFFSET
 
 
-def decode_blob(blob: bytes | None, fallback: object) -> object:
+def decode_blob(blob: bytes | str | memoryview | None, fallback: object) -> object:
     if not blob:
         return fallback
     try:
-        return json.loads(blob.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
+        if isinstance(blob, str):
+            text = blob
+        elif isinstance(blob, memoryview):
+            text = blob.tobytes().decode("utf-8")
+        else:
+            text = blob.decode("utf-8")
+        return json.loads(text)
+    except (AttributeError, TypeError, UnicodeDecodeError, json.JSONDecodeError):
         return fallback
 
 

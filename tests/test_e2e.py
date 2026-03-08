@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
 
 from mcpone_cli.cli import app
@@ -189,6 +190,115 @@ def test_add_server_and_enable_across_multiple_clusters(
     testing_payload = json.loads(testing_cluster.stdout)
     assert server_id in default_payload["enabled_server_ids"]
     assert server_id in testing_payload["enabled_server_ids"]
+
+
+def test_sync_custom_app_handles_text_json_fields_and_writes_servers(
+    runner, temp_db: Path, resources_dir: Path
+) -> None:
+    config_file = _config_file(temp_db, resources_dir)
+    antigravity_config = temp_db.parent / "mcp.json"
+
+    add_app = runner.invoke(
+        app,
+        [
+            "--config",
+            str(config_file),
+            "apps",
+            "add-custom",
+            "Antigravity",
+            str(antigravity_config),
+            "--config-key",
+            "servers",
+        ],
+    )
+    assert add_app.exit_code == 0, add_app.output
+
+    add_server = runner.invoke(
+        app,
+        [
+            "--config",
+            str(config_file),
+            "servers",
+            "add",
+            "Local Dev Server",
+            "--command",
+            "python3",
+            "--arg",
+            "-m",
+            "--arg",
+            "my_local_server",
+            "--env",
+            "DEBUG=true",
+            "--parameter",
+            "scope=test",
+        ],
+    )
+    assert add_server.exit_code == 0, add_server.output
+
+    show_server = runner.invoke(
+        app,
+        [
+            "--config",
+            str(config_file),
+            "servers",
+            "show",
+            "Local Dev Server",
+        ],
+    )
+    assert show_server.exit_code == 0, show_server.output
+    server_payload = json.loads(show_server.stdout)
+    server_id = server_payload["server_id"]
+
+    enable_server = runner.invoke(
+        app,
+        [
+            "--config",
+            str(config_file),
+            "servers",
+            "enable",
+            "Local Dev Server",
+            "--app",
+            "Antigravity",
+            "--cluster",
+            "Cluster A",
+        ],
+    )
+    assert enable_server.exit_code == 0, enable_server.output
+
+    with sqlite3.connect(temp_db) as connection:
+        connection.execute(
+            """
+            UPDATE ZADDEDSERVER
+            SET ZARGS=?, ZENV=?, ZPARAMETERS=?
+            WHERE ZID=?
+            """,
+            ('["-m", "my_local_server"]', '{"DEBUG": "true"}', '{"scope": "test"}', server_id),
+        )
+        connection.commit()
+
+    sync_result = runner.invoke(
+        app,
+        [
+            "--config",
+            str(config_file),
+            "sync",
+            "app",
+            "Antigravity",
+        ],
+    )
+    assert sync_result.exit_code == 0, sync_result.output
+    normalized_output = sync_result.output.replace("\n", "")
+    assert "Synced Antigravity -> " in normalized_output
+    assert str(antigravity_config) in normalized_output
+
+    output_payload = json.loads(antigravity_config.read_text(encoding="utf-8"))
+    assert output_payload["servers"]
+    assert output_payload["servers"][f"Local_Dev_Server_id_{server_id}"]["command"] == "python3"
+    assert output_payload["servers"][f"Local_Dev_Server_id_{server_id}"]["args"] == [
+        "-m",
+        "my_local_server",
+    ]
+    assert output_payload["servers"][f"Local_Dev_Server_id_{server_id}"]["env"] == {"DEBUG": "true"}
 
 
 def _config_file(temp_db: Path, resources_dir: Path) -> Path:

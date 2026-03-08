@@ -41,7 +41,6 @@ The implementation is grounded in first-party McpOne artifacts:
 - Market install spec: [`docs/market-install-spec.md`](docs/market-install-spec.md)
 - Testing guide: [`docs/testing-guide.md`](docs/testing-guide.md)
 - Release workflow: [`docs/release-workflow.md`](docs/release-workflow.md)
-- Known bug investigations: [`docs/bug-report-antigravity-sync.md`](docs/bug-report-antigravity-sync.md)
 
 ## Requirements
 
