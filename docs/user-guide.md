@@ -72,7 +72,7 @@ make install
 Show help:
 
 ```bash
-.venv/bin/mcpone-cli --help
+mcpone-cli --help
 ```
 
 ## Configuration
@@ -98,37 +98,37 @@ before write operations.
 List apps:
 
 ```bash
-.venv/bin/mcpone-cli apps list
+mcpone-cli apps list
 ```
 
 Show one app:
 
 ```bash
-.venv/bin/mcpone-cli apps show Codex
+mcpone-cli apps show Codex
 ```
 
 List clusters for one app:
 
 ```bash
-.venv/bin/mcpone-cli clusters list --app Codex
+mcpone-cli clusters list --app Codex
 ```
 
 List imported servers only:
 
 ```bash
-.venv/bin/mcpone-cli servers list --source imported
+mcpone-cli servers list --source imported
 ```
 
 Inspect the market catalog:
 
 ```bash
-.venv/bin/mcpone-cli market list --category development
+mcpone-cli market list --category development
 ```
 
 Check the local environment:
 
 ```bash
-.venv/bin/mcpone-cli doctor
+mcpone-cli doctor
 ```
 
 ## Write Examples
@@ -136,19 +136,19 @@ Check the local environment:
 Add a custom app:
 
 ```bash
-.venv/bin/mcpone-cli apps add-custom "Claude CLI" ~/.claude.json --config-key mcpServers
+mcpone-cli apps add-custom "Claude CLI" ~/.claude.json --config-key mcpServers
 ```
 
 Create a cluster:
 
 ```bash
-.venv/bin/mcpone-cli clusters create "Testing" --app Codex
+mcpone-cli clusters create "Testing" --app Codex
 ```
 
 Add a server manually:
 
 ```bash
-.venv/bin/mcpone-cli servers add \
+mcpone-cli servers add \
   "My Server" \
   --command npx \
   --arg -y \
@@ -160,19 +160,105 @@ Add a server manually:
 Enable a server in a cluster:
 
 ```bash
-.venv/bin/mcpone-cli servers enable Context7 --app Codex --cluster "Cluster A"
+mcpone-cli servers enable Context7 --app Codex --cluster "Cluster A"
 ```
 
 Disable a server:
 
 ```bash
-.venv/bin/mcpone-cli servers disable Context7 --app Codex --cluster "Cluster A"
+mcpone-cli servers disable Context7 --app Codex --cluster "Cluster A"
 ```
 
 Set an app's active cluster:
 
 ```bash
-.venv/bin/mcpone-cli apps set-active-cluster Codex Testing
+mcpone-cli apps set-active-cluster Codex Testing
+```
+
+## Administrative Workflows
+
+### Add a new app
+
+Create a custom app entry that points McpOne to a specific MCP config file:
+
+```bash
+mcpone-cli apps add-custom "Claude CLI" ~/.claude.json --config-key mcpServers
+```
+
+Use this when the app is not already present in the McpOne database.
+
+### Add a new cluster for an app
+
+Create an extra cluster for an existing app:
+
+```bash
+mcpone-cli clusters create "Staging" --app Codex
+```
+
+Switch the app to use that cluster:
+
+```bash
+mcpone-cli apps set-active-cluster Codex Staging
+```
+
+### Add a new MCP or local server
+
+Example: add a local Python-based server:
+
+```bash
+mcpone-cli servers add \
+  "Local Dev Server" \
+  --command python3 \
+  --arg -m \
+  --arg my_local_server \
+  --env DEBUG=true \
+  --type STDIO \
+  --source imported
+```
+
+Example: add a remote HTTP server:
+
+```bash
+mcpone-cli servers add \
+  "Remote Docs Server" \
+  --url https://example.com/mcp \
+  --header AUTHORIZATION="Bearer token" \
+  --type STREAMABLE_HTTP
+```
+
+### Attach a server to one cluster
+
+```bash
+mcpone-cli servers enable "Local Dev Server" --app Codex --cluster "Cluster A"
+```
+
+### Attach one server to multiple app clusters at once
+
+Use `servers enable-many` with repeated `--target` values.
+
+Target format:
+
+- `APP::CLUSTER`
+- or `APP/CLUSTER`
+
+Example:
+
+```bash
+mcpone-cli servers enable-many \
+  "Local Dev Server" \
+  --target "Codex::Cluster A" \
+  --target "Codex::Testing" \
+  --target "Claude CLI::Cluster A"
+```
+
+You can also attach multiple servers at once:
+
+```bash
+mcpone-cli servers enable-many \
+  Context7 \
+  Firecrawl \
+  --target "Codex::Cluster A" \
+  --target "Gemini CLI::Cluster A"
 ```
 
 ## Market Workflow
@@ -190,8 +276,8 @@ Typical flow:
 Example:
 
 ```bash
-.venv/bin/mcpone-cli market show Context7
-.venv/bin/mcpone-cli market install \
+mcpone-cli market show Context7
+mcpone-cli market install \
   Context7 \
   --app Codex \
   --cluster "Cluster A" \
@@ -212,13 +298,13 @@ Import reads an existing agent config file and creates missing McpOne servers.
 Import from the app's configured file:
 
 ```bash
-.venv/bin/mcpone-cli import app Codex
+mcpone-cli import app Codex
 ```
 
 Import from an explicit file and key:
 
 ```bash
-.venv/bin/mcpone-cli import file \
+mcpone-cli import file \
   "Claude CLI" \
   --path ~/.claude.json \
   --key mcpServers
@@ -233,13 +319,13 @@ configured file.
 Sync one app:
 
 ```bash
-.venv/bin/mcpone-cli sync app Codex
+mcpone-cli sync app Codex
 ```
 
 Sync every configured app:
 
 ```bash
-.venv/bin/mcpone-cli sync all
+mcpone-cli sync all
 ```
 
 ## Config Format Behavior

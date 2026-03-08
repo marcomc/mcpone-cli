@@ -21,6 +21,7 @@ contributors can see what is already covered and what remains partial.
 | Update server | Full | `servers update` |
 | Delete server | Full | `servers delete` |
 | Enable/disable server in cluster | Full | `servers enable`, `servers disable` |
+| Enable server across multiple clusters/apps at once | Full | `servers enable-many` |
 | Inspect market catalog | Full | `market list`, `market show` via app resources |
 | Install market tool | Full | `market install` for one selected connection |
 | Import from target config file | Full | `import app`, `import file` |

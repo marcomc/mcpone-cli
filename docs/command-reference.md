@@ -113,6 +113,17 @@ Deletes the server and removes its ID from all clusters.
 
 Adds one or more server IDs to the cluster's enabled server array.
 
+### `servers enable-many <server-ref>... --target <app::cluster>`
+
+Adds one or more servers to multiple target app clusters in one command.
+
+Repeat `--target` as needed.
+
+Accepted target formats:
+
+- `APP::CLUSTER`
+- `APP/CLUSTER`
+
 ### `servers disable <server-ref>... --app <app> --cluster <cluster>`
 
 Removes one or more server IDs from the cluster's enabled server array.

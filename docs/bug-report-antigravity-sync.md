@@ -37,13 +37,13 @@ mcpone-cli apps add-custom Antigravity \
   --explanation "Antigravity MCP client"
 ```
 
-2. Attempt to sync:
+1. Attempt to sync:
 
 ```bash
 mcpone-cli sync app Antigravity
 ```
 
-3. Observe a traceback ending in:
+1. Observe a traceback ending in:
 
 ```text
 AttributeError: 'str' object has no attribute 'decode'
@@ -66,7 +66,7 @@ Observed values before fix:
 AM7K2Q | automac-mcp | text | text | text
 ```
 
-2. Enable servers for the custom app:
+1. Enable servers for the custom app:
 
 ```bash
 mcpone-cli servers enable 7J6VKW SUG610 PX649D WTYCA2 ZNACLC VCAO8D \
@@ -74,19 +74,19 @@ mcpone-cli servers enable 7J6VKW SUG610 PX649D WTYCA2 ZNACLC VCAO8D \
   --cluster "Cluster A"
 ```
 
-3. Re-run sync:
+1. Re-run sync:
 
 ```bash
 mcpone-cli sync app Antigravity
 ```
 
-4. Observe a success message:
+1. Observe a success message:
 
 ```text
 Synced Antigravity -> /Users/mmassari/Library/Application Support/Antigravity/User/mcp.json
 ```
 
-5. But the output file contains:
+1. But the output file contains:
 
 ```json
 {
@@ -94,7 +94,7 @@ Synced Antigravity -> /Users/mmassari/Library/Application Support/Antigravity/Us
 }
 ```
 
-6. At the same time, the McpOne cluster has enabled server IDs:
+1. At the same time, the McpOne cluster has enabled server IDs:
 
 ```text
 ['7J6VKW', 'SUG610', 'PX649D', 'WTYCA2', 'ZNACLC', 'VCAO8D']
@@ -208,9 +208,8 @@ instead of:
 ## Workaround Used Locally
 
 1. Manually converted the malformed `automac-mcp` row from `TEXT` to `BLOB`.
-2. Manually populated:
+1. Manually populated:
 
 `/Users/mmassari/Library/Application Support/Antigravity/User/mcp.json`
 
 with the enabled server set after `sync app` wrote `{ "servers": {} }`.
-

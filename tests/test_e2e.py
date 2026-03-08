@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from mcpone_cli.cli import app
@@ -86,6 +87,108 @@ def test_import_file_into_mcpone(runner, temp_db: Path, resources_dir: Path) -> 
     )
     assert server_list.exit_code == 0, server_list.output
     assert "GitHub" in server_list.output
+
+
+def test_add_server_and_enable_across_multiple_clusters(
+    runner, temp_db: Path, resources_dir: Path
+) -> None:
+    config_file = _config_file(temp_db, resources_dir)
+
+    create_cluster = runner.invoke(
+        app,
+        [
+            "--config",
+            str(config_file),
+            "clusters",
+            "create",
+            "Testing",
+            "--app",
+            "Codex",
+        ],
+    )
+    assert create_cluster.exit_code == 0, create_cluster.output
+
+    add_server = runner.invoke(
+        app,
+        [
+            "--config",
+            str(config_file),
+            "servers",
+            "add",
+            "Local Dev Server",
+            "--command",
+            "python3",
+            "--arg",
+            "-m",
+            "--arg",
+            "my_local_server",
+            "--env",
+            "DEBUG=true",
+        ],
+    )
+    assert add_server.exit_code == 0, add_server.output
+
+    show_server = runner.invoke(
+        app,
+        [
+            "--config",
+            str(config_file),
+            "servers",
+            "show",
+            "Local Dev Server",
+        ],
+    )
+    assert show_server.exit_code == 0, show_server.output
+    server_payload = json.loads(show_server.stdout)
+    server_id = server_payload["server_id"]
+
+    enable_many = runner.invoke(
+        app,
+        [
+            "--config",
+            str(config_file),
+            "servers",
+            "enable-many",
+            "Local Dev Server",
+            "--target",
+            "Codex::Cluster A",
+            "--target",
+            "Codex::Testing",
+        ],
+    )
+    assert enable_many.exit_code == 0, enable_many.output
+    assert "2 target cluster(s)" in enable_many.output
+
+    default_cluster = runner.invoke(
+        app,
+        [
+            "--config",
+            str(config_file),
+            "clusters",
+            "show",
+            "Cluster A",
+            "--app",
+            "Codex",
+        ],
+    )
+    testing_cluster = runner.invoke(
+        app,
+        [
+            "--config",
+            str(config_file),
+            "clusters",
+            "show",
+            "Testing",
+            "--app",
+            "Codex",
+        ],
+    )
+    assert default_cluster.exit_code == 0, default_cluster.output
+    assert testing_cluster.exit_code == 0, testing_cluster.output
+    default_payload = json.loads(default_cluster.stdout)
+    testing_payload = json.loads(testing_cluster.stdout)
+    assert server_id in default_payload["enabled_server_ids"]
+    assert server_id in testing_payload["enabled_server_ids"]
 
 
 def _config_file(temp_db: Path, resources_dir: Path) -> Path:

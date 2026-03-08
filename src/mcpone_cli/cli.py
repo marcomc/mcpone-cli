@@ -67,6 +67,15 @@ def _backup_if_needed(runtime: Runtime) -> None:
         console.print(f"[dim]DB backup:[/dim] {backup_path}")
 
 
+def _parse_target(raw: str) -> tuple[str, str]:
+    for separator in ("::", "/"):
+        if separator in raw:
+            app_name, cluster_name = raw.split(separator, 1)
+            if app_name.strip() and cluster_name.strip():
+                return app_name.strip(), cluster_name.strip()
+    raise typer.BadParameter(f"Expected target in the form APP::CLUSTER or APP/CLUSTER, got: {raw}")
+
+
 @app.callback()
 def main_callback(
     ctx: typer.Context,
@@ -317,6 +326,26 @@ def servers_enable(
     _backup_if_needed(runtime)
     updated = runtime.store.enable_servers(app_name, cluster, server_ref)
     console.print(f"{updated.name}: enabled {len(updated.enabled_server_ids)} servers")
+
+
+@servers_app.command("enable-many")
+def servers_enable_many(
+    ctx: typer.Context,
+    server_ref: list[str],
+    target: list[str] = typer.Option(..., "--target"),
+):
+    runtime = _state(ctx)
+    _backup_if_needed(runtime)
+    applied_targets: list[str] = []
+    for raw_target in target:
+        app_name, cluster_name = _parse_target(raw_target)
+        runtime.store.enable_servers(app_name, cluster_name, server_ref)
+        applied_targets.append(f"{app_name}/{cluster_name}")
+
+    console.print(
+        f"Enabled {len(server_ref)} server(s) across {len(applied_targets)} target cluster(s): "
+        + ", ".join(applied_targets)
+    )
 
 
 @servers_app.command("disable")
