@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Fixed remote header preservation during sync and Codex-specific bearer auth translation behavior for remote MCP servers
+
 ## 0.1.0 - 2026-03-08
 
 - Initial public release scaffold for `mcpone-cli`
