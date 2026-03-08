@@ -9,3 +9,5 @@
 - Fixed sync/import decoding for legacy McpOne JSON fields stored as SQLite `TEXT` instead of `BLOB`
 - Added regression coverage for sync targets, config key styles, transport serialization, and import/sync round trips
 - Added built-in Gemini/Copilot sync sanitization so external sanitizer agents are no longer required for those targets
+- Fixed GitHub remote market install selection so parameterized `STREAMABLE_HTTP` installs materialize OAuth bearer arguments correctly
+- Added Codex sync translation from bearer `Authorization` headers to `bearer_token_env_var` for remote MCP servers

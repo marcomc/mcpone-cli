@@ -672,8 +672,8 @@ def test_json_read_commands_return_structured_payloads(
     assert server_payload["command"] == "npx"
 
     market_payload = _invoke_json(runner, config_file, ["market", "list"])
-    assert market_payload["count"] == 1
-    assert market_payload["tools"][0]["name"] == "Context7"
+    assert market_payload["count"] >= 2
+    assert any(tool["name"] == "Context7" for tool in market_payload["tools"])
 
     market_show_payload = _invoke_json(runner, config_file, ["market", "show", "Context7"])
     assert market_show_payload["name"] == "Context7"
@@ -1094,6 +1094,107 @@ def test_sync_adds_copilot_tools_and_sanitized_keys(
     output_payload = _read_config(target_path)["mcpServers"]
     assert output_payload[f"Context7_id_{server_id}"]["tools"] == ["*"]
     assert f"Context7[id={server_id}]" not in output_payload
+
+
+def test_market_install_github_streamable_http_materializes_oauth_bearer_args(
+    runner, temp_db: Path, resources_dir: Path
+) -> None:
+    config_file = _config_file(temp_db, resources_dir)
+
+    install_result = runner.invoke(
+        app,
+        [
+            "--config",
+            str(config_file),
+            "market",
+            "install",
+            "GitHub",
+            "--app",
+            "Codex",
+            "--cluster",
+            "Cluster A",
+            "--connection",
+            "STREAMABLE_HTTP",
+            "--param",
+            "OAUTH_BEARER=test-pat",
+        ],
+    )
+    assert install_result.exit_code == 0, install_result.output
+
+    sync_result = runner.invoke(
+        app,
+        ["--config", str(config_file), "sync", "app", "Codex"],
+    )
+    assert sync_result.exit_code == 0, sync_result.output
+
+    codex_payload = _read_config(temp_db.parent / "codex.toml")["mcp_servers"]
+    github_entries = [
+        payload for key, payload in codex_payload.items() if key.startswith("GitHub_id_")
+    ]
+    assert len(github_entries) == 1
+    github_payload = github_entries[0]
+    assert github_payload["url"] == "https://api.githubcopilot.com/mcp"
+    assert github_payload["command"] == "npx"
+    assert github_payload["args"] == ["--oauth2Bearer", "test-pat"]
+
+
+def test_sync_translates_codex_bearer_authorization_header_to_bearer_token_env_var(
+    runner, temp_db: Path, resources_dir: Path
+) -> None:
+    config_file = _config_file(temp_db, resources_dir)
+
+    _add_server(
+        runner,
+        config_file,
+        "Remote GitHub",
+        url="https://api.githubcopilot.com/mcp",
+        headers={"Authorization": "Bearer test-pat"},
+        server_type="STREAMABLE_HTTP",
+    )
+    _enable_servers(runner, config_file, "Codex", "Cluster A", ["Remote GitHub"])
+
+    sync_result = runner.invoke(
+        app,
+        ["--config", str(config_file), "sync", "app", "Codex"],
+    )
+    assert sync_result.exit_code == 0, sync_result.output
+
+    codex_payload = _read_config(temp_db.parent / "codex.toml")["mcp_servers"]
+    remote_payload = next(
+        payload for key, payload in codex_payload.items() if key.startswith("Remote_GitHub_id_")
+    )
+    assert remote_payload["url"] == "https://api.githubcopilot.com/mcp"
+    assert remote_payload["bearer_token_env_var"] == "CODEX_GITHUB_PERSONAL_ACCESS_TOKEN"
+    assert "headers" not in remote_payload
+
+
+def test_sync_preserves_non_auth_remote_headers_for_codex_toml(
+    runner, temp_db: Path, resources_dir: Path
+) -> None:
+    config_file = _config_file(temp_db, resources_dir)
+
+    _add_server(
+        runner,
+        config_file,
+        "Remote Docs",
+        url="https://example.com/mcp",
+        headers={"X-API-Key": "test-key"},
+        server_type="STREAMABLE_HTTP",
+    )
+    _enable_servers(runner, config_file, "Codex", "Cluster A", ["Remote Docs"])
+
+    sync_result = runner.invoke(
+        app,
+        ["--config", str(config_file), "sync", "app", "Codex"],
+    )
+    assert sync_result.exit_code == 0, sync_result.output
+
+    codex_payload = _read_config(temp_db.parent / "codex.toml")["mcp_servers"]
+    remote_payload = next(
+        payload for key, payload in codex_payload.items() if key.startswith("Remote_Docs_id_")
+    )
+    assert remote_payload["url"] == "https://example.com/mcp"
+    assert remote_payload["headers"] == {"X-API-Key": "test-key"}
 
 
 def test_import_sync_round_trip_consistency(runner, temp_db: Path, resources_dir: Path) -> None:

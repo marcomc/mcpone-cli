@@ -93,6 +93,9 @@ target app is known to reject bracketed MCP server names.
   `Context7_id_7J6VKW`
 - Copilot exports sanitized keys and injects `tools = ["*"]` into each server
   entry for Copilot CLI compatibility
+- Codex TOML exports sanitized keys and translates remote bearer
+  `Authorization` headers into `bearer_token_env_var` entries instead of
+  serializing the bearer token as a header directly
 - Claude-style JSON remains bracketed by default
 
 ## Value Mapping
@@ -106,6 +109,39 @@ Current export mapping uses these server fields:
 - `headers`
 
 It intentionally does not export every database field.
+
+### Codex bearer auth translation
+
+For Codex TOML targets, if a remote server has an `Authorization` header with a
+`Bearer ...` value, `mcpone-cli` rewrites that auth into Codex's expected
+`bearer_token_env_var` shape during sync.
+
+Example DB-side server state:
+
+```json
+{
+  "url": "https://api.githubcopilot.com/mcp",
+  "headers": {
+    "Authorization": "Bearer <token>"
+  }
+}
+```
+
+Codex output shape:
+
+```toml
+[mcp_servers.GitHub_id_ABC123]
+url = "https://api.githubcopilot.com/mcp"
+bearer_token_env_var = "CODEX_GITHUB_PERSONAL_ACCESS_TOKEN"
+```
+
+Notes:
+
+- this translation is Codex-specific and does not change the McpOne DB record
+- this applies to any Codex remote MCP server whose `Authorization` header uses
+  a `Bearer ...` value, not only GitHub
+- non-auth headers are still emitted normally
+- the referenced environment variable must exist when Codex runs
 
 ## Known Non-Goals
 

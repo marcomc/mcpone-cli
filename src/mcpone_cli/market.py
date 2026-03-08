@@ -55,12 +55,39 @@ def find_market_tool(tools: list[MarketTool], ref: str) -> MarketTool:
     raise KeyError(f"Market tool not found: {ref}")
 
 
-def choose_connection(tool: MarketTool, preferred: str | None = None) -> MarketConnection:
+def choose_connection(
+    tool: MarketTool,
+    preferred: str | None = None,
+    provided_keys: set[str] | None = None,
+) -> MarketConnection:
+    provided = provided_keys or set()
     if preferred:
-        for connection in tool.connections:
-            if connection.type.casefold() == preferred.casefold():
-                return connection
-        raise KeyError(f"Connection type not found: {preferred}")
+        candidates = [
+            connection
+            for connection in tool.connections
+            if connection.type.casefold() == preferred.casefold()
+        ]
+        if not candidates:
+            raise KeyError(f"Connection type not found: {preferred}")
+        if provided:
+            matching = [
+                connection
+                for connection in candidates
+                if provided.issubset(set(connection.parameters.keys()))
+            ]
+            if matching:
+                candidates = matching
+
+        return max(
+            candidates,
+            key=lambda connection: (
+                len(set(connection.parameters.keys()) & provided),
+                len(connection.parameters),
+                bool(connection.command),
+                len(connection.args),
+                len(connection.headers),
+            ),
+        )
 
     for wanted in ("STDIO", "STREAMABLE_HTTP"):
         for connection in tool.connections:
@@ -97,6 +124,7 @@ def materialize_connection(
     values.update(provided)
 
     args: list[str] = []
+    consumed_keys: set[str] = set()
     for raw_arg in connection.args:
         match = PLACEHOLDER_PATTERN.fullmatch(raw_arg)
         if not match:
@@ -104,6 +132,7 @@ def materialize_connection(
             continue
 
         key = match.group(1)
+        consumed_keys.add(key)
         meta = connection.parameters.get(key, {})
         value = values.get(key, meta.get("default"))
         if value in (None, ""):
@@ -125,6 +154,28 @@ def materialize_connection(
             args.extend([str(meta["flag"]), str(value)])
         else:
             args.append(str(value))
+
+    for key, meta in connection.parameters.items():
+        if key in consumed_keys:
+            continue
+        value = values.get(key, meta.get("default"))
+        if value in (None, ""):
+            if meta.get("required"):
+                raise ValueError(f"Missing required market parameter: {key}")
+            continue
+
+        if str(meta.get("type", "")).lower() == "boolean":
+            if _normalize_bool(value):
+                if meta.get("flag"):
+                    args.append(str(meta["flag"]))
+                elif meta.get("prefix"):
+                    args.extend([str(meta["prefix"]), "true"])
+            continue
+
+        if meta.get("prefix"):
+            args.extend([str(meta["prefix"]), str(value)])
+        elif meta.get("flag"):
+            args.extend([str(meta["flag"]), str(value)])
 
     headers = {
         key: _replace_inline(str(value), values)

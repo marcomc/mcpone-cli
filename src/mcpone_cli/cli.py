@@ -856,8 +856,9 @@ def market_install(
     runtime = _state(ctx)
     backup_path = _backup_if_needed(runtime)
     tool = find_market_tool(load_market_catalog(runtime.resources_dir), tool_ref)
-    connection = choose_connection(tool, connection_type)
-    materialized = materialize_connection(tool, connection, _parse_pairs(parameter or []), version)
+    provided_parameters = _parse_pairs(parameter or [])
+    connection = choose_connection(tool, connection_type, set(provided_parameters))
+    materialized = materialize_connection(tool, connection, provided_parameters, version)
     server = runtime.store.add_server(
         name=str(materialized["name"]),
         command=materialized.get("command"),

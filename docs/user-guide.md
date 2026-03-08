@@ -364,6 +364,12 @@ Key naming styles:
 - Gemini is also exported with sanitized keys such as `Context7_id_ABC123`
 - Claude-style configs use bracketed keys such as `Context7[id=ABC123]`
 - Copilot sync also injects `tools: ["*"]` into each server entry for CLI compatibility
+- Codex sync translates remote bearer `Authorization` headers into
+  `bearer_token_env_var` entries for Codex-compatible remote auth
+- this applies to any Codex remote MCP server using bearer auth, not only GitHub
+
+For Codex remote bearer-auth servers, the referenced environment variable must
+exist when you run `codex`.
 
 ## Safety Notes
 

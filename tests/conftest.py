@@ -127,7 +127,34 @@ def resources_dir(tmp_path: Path) -> Path:
                     },
                 }
             ],
-        }
+        },
+        {
+            "id": "21bbf086d3eb",
+            "name": "GitHub",
+            "author": "github",
+            "category": "git",
+            "version": "0.17.1",
+            "githubUrl": "https://github.com/github/github-mcp-server",
+            "connections": [
+                {
+                    "type": "STREAMABLE_HTTP",
+                    "url": "https://api.githubcopilot.com/mcp",
+                },
+                {
+                    "type": "STREAMABLE_HTTP",
+                    "command": "npx",
+                    "url": "https://api.githubcopilot.com/mcp",
+                    "parameters": {
+                        "OAUTH_BEARER": {
+                            "type": "string",
+                            "required": True,
+                            "secreted": True,
+                            "prefix": "--oauth2Bearer",
+                        }
+                    },
+                },
+            ],
+        },
     ]
     (directory / "070_development.json").write_text(json.dumps(payload), encoding="utf-8")
     return directory
