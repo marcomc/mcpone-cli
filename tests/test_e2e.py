@@ -397,6 +397,146 @@ def test_human_outputs_prefer_server_and_market_names_while_json_keeps_ids(
     assert json_market["catalog_id"] == "wotv5q80be"
 
 
+def test_human_status_messages_resolve_names_when_called_with_ids(
+    runner, temp_db: Path, resources_dir: Path
+) -> None:
+    config_file = _config_file(temp_db, resources_dir)
+
+    create_cluster_payload = _invoke_json(
+        runner, config_file, ["clusters", "create", "Testing", "--app", "Codex"]
+    )
+    cluster_id = create_cluster_payload["cluster"]["cluster_id"]
+
+    set_active_result = runner.invoke(
+        app,
+        [
+            "--config",
+            str(config_file),
+            "apps",
+            "set-active-cluster",
+            "APP1",
+            cluster_id,
+        ],
+    )
+    assert set_active_result.exit_code == 0, set_active_result.output
+    assert "active cluster -> Testing" in set_active_result.output
+    assert cluster_id not in set_active_result.output
+
+    add_server_payload = _invoke_json(
+        runner,
+        config_file,
+        [
+            "servers",
+            "add",
+            "Local Dev Server",
+            "--command",
+            "python3",
+            "--arg",
+            "-m",
+            "--arg",
+            "my_server",
+        ],
+    )
+    server_id = add_server_payload["server"]["server_id"]
+
+    delete_server_result = runner.invoke(
+        app,
+        [
+            "--config",
+            str(config_file),
+            "servers",
+            "delete",
+            server_id,
+        ],
+    )
+    assert delete_server_result.exit_code == 0, delete_server_result.output
+    assert "Deleted server Local Dev Server" in delete_server_result.output
+    assert server_id not in delete_server_result.output
+
+    add_server_payload = _invoke_json(
+        runner,
+        config_file,
+        [
+            "servers",
+            "add",
+            "Bulk Server",
+            "--command",
+            "python3",
+            "--arg",
+            "-m",
+            "--arg",
+            "bulk_server",
+        ],
+    )
+    bulk_server_id = add_server_payload["server"]["server_id"]
+    enable_many_result = runner.invoke(
+        app,
+        [
+            "--config",
+            str(config_file),
+            "servers",
+            "enable-many",
+            bulk_server_id,
+            "--target",
+            f"APP1::{cluster_id}",
+        ],
+    )
+    assert enable_many_result.exit_code == 0, enable_many_result.output
+    assert "Codex/Testing" in enable_many_result.output
+    assert cluster_id not in enable_many_result.output
+
+    install_result = runner.invoke(
+        app,
+        [
+            "--config",
+            str(config_file),
+            "market",
+            "install",
+            "Context7",
+            "--app",
+            "APP1",
+            "--cluster",
+            cluster_id,
+            "--param",
+            "CONTEXT7_API_KEY=test-key",
+        ],
+    )
+    assert install_result.exit_code == 0, install_result.output
+    assert "Installed Context7 into Codex/Testing" in install_result.output
+    assert cluster_id not in install_result.output
+
+    import_target = temp_db.parent / "import.json"
+    import_target.write_text(
+        json.dumps({"mcpServers": {"GitHub[id=PX649D]": {"command": "docker", "args": ["run"]}}}),
+        encoding="utf-8",
+    )
+    _add_custom_app(runner, config_file, "Import App", import_target, "mcpServers")
+    import_app_payload = _invoke_json(runner, config_file, ["apps", "show", "Import App"])
+    import_result = runner.invoke(
+        app,
+        ["--config", str(config_file), "import", "app", import_app_payload["app_id"]],
+    )
+    assert import_result.exit_code == 0, import_result.output
+    assert "Imported 1 server(s) from Import App" in import_result.output
+    assert import_app_payload["app_id"] not in import_result.output
+
+    delete_cluster_result = runner.invoke(
+        app,
+        [
+            "--config",
+            str(config_file),
+            "clusters",
+            "delete",
+            cluster_id,
+            "--app",
+            "APP1",
+        ],
+    )
+    assert delete_cluster_result.exit_code == 0, delete_cluster_result.output
+    assert "Deleted cluster Testing" in delete_cluster_result.output
+    assert cluster_id not in delete_cluster_result.output
+
+
 def test_apps_matrix_shows_cluster_grid_for_one_app(
     runner, temp_db: Path, resources_dir: Path
 ) -> None:
@@ -676,6 +816,10 @@ def test_json_write_and_sync_commands_return_structured_payloads(
     )
     assert install_payload["action"] == "market.install"
     assert install_payload["tool"]["name"] == "Context7"
+    assert install_payload["app"]["name"] == "Codex"
+    assert install_payload["app"]["app_id"] == "APP1"
+    assert install_payload["cluster"]["name"] == "Renamed"
+    assert install_payload["cluster"]["cluster_id"]
 
     sync_app_payload = _invoke_json(runner, config_file, ["sync", "app", "Codex"])
     assert sync_app_payload["action"] == "sync.app"

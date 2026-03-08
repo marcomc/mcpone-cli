@@ -426,6 +426,7 @@ def apps_add_custom(
 def apps_set_active_cluster(ctx: typer.Context, app_ref: str, cluster_ref: str):
     runtime = _state(ctx)
     backup_path = _backup_if_needed(runtime)
+    cluster = runtime.store.get_cluster(app_ref, cluster_ref)
     item = runtime.store.set_active_cluster(app_ref, cluster_ref)
     _emit(
         runtime,
@@ -435,7 +436,7 @@ def apps_set_active_cluster(ctx: typer.Context, app_ref: str, cluster_ref: str):
             "backup_path": backup_path,
             "app": _app_payload(item),
         },
-        text=f"{item.name} active cluster -> {cluster_ref}",
+        text=f"{item.name} active cluster -> {cluster.name}",
     )
 
 
@@ -531,6 +532,7 @@ def clusters_delete(
 ):
     runtime = _state(ctx)
     backup_path = _backup_if_needed(runtime)
+    cluster = runtime.store.get_cluster(app_name, cluster_ref)
     runtime.store.delete_cluster(app_name, cluster_ref)
     _emit(
         runtime,
@@ -541,7 +543,7 @@ def clusters_delete(
             "app_name": app_name,
             "cluster_ref": cluster_ref,
         },
-        text=f"Deleted cluster {cluster_ref}",
+        text=f"Deleted cluster {cluster.name}",
     )
 
 
@@ -679,6 +681,7 @@ def servers_update(
 def servers_delete(ctx: typer.Context, server_ref: str):
     runtime = _state(ctx)
     backup_path = _backup_if_needed(runtime)
+    server = runtime.store.get_server(server_ref)
     runtime.store.delete_server(server_ref)
     _emit(
         runtime,
@@ -688,7 +691,7 @@ def servers_delete(ctx: typer.Context, server_ref: str):
             "backup_path": backup_path,
             "server_ref": server_ref,
         },
-        text=f"Deleted server {server_ref}",
+        text=f"Deleted server {server.name}",
     )
 
 
@@ -724,10 +727,13 @@ def servers_enable_many(
     runtime = _state(ctx)
     backup_path = _backup_if_needed(runtime)
     applied_targets: list[str] = []
+    human_targets: list[str] = []
     for raw_target in target:
-        app_name, cluster_name = _parse_target(raw_target)
-        runtime.store.enable_servers(app_name, cluster_name, server_ref)
-        applied_targets.append(f"{app_name}/{cluster_name}")
+        app_ref, cluster_ref = _parse_target(raw_target)
+        app_item = runtime.store.get_app(app_ref)
+        cluster = runtime.store.enable_servers(app_ref, cluster_ref, server_ref)
+        applied_targets.append(f"{app_ref}/{cluster_ref}")
+        human_targets.append(f"{app_item.name}/{cluster.name}")
     _emit(
         runtime,
         payload={
@@ -740,7 +746,7 @@ def servers_enable_many(
         },
         text=(
             f"Enabled {len(server_ref)} server(s) across {len(applied_targets)} target cluster(s): "
-            + ", ".join(applied_targets)
+            + ", ".join(human_targets)
         ),
     )
 
@@ -864,15 +870,16 @@ def market_install(
         version=str(materialized.get("version", "latest")),
         server_id=generate_server_id(f"{tool.catalog_id}|{tool.name}"),
     )
-    runtime.store.enable_servers(app_name, cluster, [server.server_id])
+    app_item = runtime.store.get_app(app_name)
+    enabled_cluster = runtime.store.enable_servers(app_name, cluster, [server.server_id])
     _emit(
         runtime,
         payload={
             "status": "ok",
             "action": "market.install",
             "backup_path": backup_path,
-            "app_name": app_name,
-            "cluster_name": cluster,
+            "app": _app_payload(app_item),
+            "cluster": _cluster_payload(enabled_cluster, app_item.name),
             "tool": {
                 "name": tool.name,
                 "catalog_id": tool.catalog_id,
@@ -880,7 +887,7 @@ def market_install(
             },
             "server": _server_payload(server),
         },
-        text=f"Installed {server.name} into {app_name}/{cluster}",
+        text=f"Installed {server.name} into {app_item.name}/{enabled_cluster.name}",
     )
 
 
@@ -969,6 +976,7 @@ def _import_mapping(
 def import_from_app(ctx: typer.Context, app_ref: str):
     runtime = _state(ctx)
     backup_path = _backup_if_needed(runtime)
+    app_item = runtime.store.get_app(app_ref)
     count = _import_mapping(runtime, app_ref)
     _emit(
         runtime,
@@ -979,7 +987,7 @@ def import_from_app(ctx: typer.Context, app_ref: str):
             "app_ref": app_ref,
             "imported_count": count,
         },
-        text=f"Imported {count} server(s) from {app_ref}",
+        text=f"Imported {count} server(s) from {app_item.name}",
     )
 
 
