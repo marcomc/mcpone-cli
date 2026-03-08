@@ -24,6 +24,37 @@ def test_command_groups_show_help_without_subcommand(runner, group_name: str) ->
     assert "Missing command." not in result.stdout
 
 
+@pytest.mark.parametrize(
+    "command_path",
+    [
+        ["apps", "show"],
+        ["apps", "add-custom"],
+        ["apps", "set-active-cluster"],
+        ["clusters", "show"],
+        ["clusters", "create"],
+        ["clusters", "rename"],
+        ["clusters", "delete"],
+        ["servers", "show"],
+        ["servers", "add"],
+        ["servers", "update"],
+        ["servers", "delete"],
+        ["servers", "enable"],
+        ["servers", "enable-many"],
+        ["servers", "disable"],
+        ["market", "show"],
+        ["market", "install"],
+        ["sync", "app"],
+        ["import", "app"],
+        ["import", "file"],
+    ],
+)
+def test_commands_show_help_without_required_args(runner, command_path: list[str]) -> None:
+    result = runner.invoke(app, command_path)
+    assert "Usage:" in result.stdout
+    assert "Missing argument" not in result.stdout
+    assert "Missing command." not in result.stdout
+
+
 def test_market_install_and_sync_to_codex(runner, temp_db: Path, resources_dir: Path) -> None:
     result = runner.invoke(
         app,

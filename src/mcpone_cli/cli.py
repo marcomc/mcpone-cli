@@ -158,7 +158,7 @@ def apps_list(ctx: typer.Context):
     console.print(table)
 
 
-@apps_app.command("show")
+@apps_app.command("show", no_args_is_help=True)
 def apps_show(ctx: typer.Context, app_ref: str):
     runtime = _state(ctx)
     item = runtime.store.get_app(app_ref)
@@ -178,7 +178,7 @@ def apps_show(ctx: typer.Context, app_ref: str):
     )
 
 
-@apps_app.command("add-custom")
+@apps_app.command("add-custom", no_args_is_help=True)
 def apps_add_custom(
     ctx: typer.Context,
     name: str,
@@ -199,7 +199,7 @@ def apps_add_custom(
     console.print(f"Created app {item.name} ({item.app_id})")
 
 
-@apps_app.command("set-active-cluster")
+@apps_app.command("set-active-cluster", no_args_is_help=True)
 def apps_set_active_cluster(ctx: typer.Context, app_ref: str, cluster_ref: str):
     runtime = _state(ctx)
     _backup_if_needed(runtime)
@@ -226,7 +226,7 @@ def clusters_list(ctx: typer.Context, app_name: str | None = typer.Option(None, 
     console.print(table)
 
 
-@clusters_app.command("show")
+@clusters_app.command("show", no_args_is_help=True)
 def clusters_show(ctx: typer.Context, cluster_ref: str, app_name: str = typer.Option(..., "--app")):
     runtime = _state(ctx)
     cluster = runtime.store.get_cluster(app_name, cluster_ref)
@@ -242,7 +242,7 @@ def clusters_show(ctx: typer.Context, cluster_ref: str, app_name: str = typer.Op
     )
 
 
-@clusters_app.command("create")
+@clusters_app.command("create", no_args_is_help=True)
 def clusters_create(ctx: typer.Context, name: str, app_name: str = typer.Option(..., "--app")):
     runtime = _state(ctx)
     _backup_if_needed(runtime)
@@ -250,7 +250,7 @@ def clusters_create(ctx: typer.Context, name: str, app_name: str = typer.Option(
     console.print(f"Created cluster {cluster.name} ({cluster.cluster_id})")
 
 
-@clusters_app.command("rename")
+@clusters_app.command("rename", no_args_is_help=True)
 def clusters_rename(
     ctx: typer.Context,
     cluster_ref: str,
@@ -263,7 +263,7 @@ def clusters_rename(
     console.print(f"Renamed cluster -> {cluster.name}")
 
 
-@clusters_app.command("delete")
+@clusters_app.command("delete", no_args_is_help=True)
 def clusters_delete(
     ctx: typer.Context,
     cluster_ref: str,
@@ -293,7 +293,7 @@ def servers_list(ctx: typer.Context, source: str | None = typer.Option(None, "--
     console.print(table)
 
 
-@servers_app.command("show")
+@servers_app.command("show", no_args_is_help=True)
 def servers_show(ctx: typer.Context, server_ref: str):
     runtime = _state(ctx)
     item = runtime.store.get_server(server_ref)
@@ -302,7 +302,7 @@ def servers_show(ctx: typer.Context, server_ref: str):
     )
 
 
-@servers_app.command("add")
+@servers_app.command("add", no_args_is_help=True)
 def servers_add(
     ctx: typer.Context,
     name: str,
@@ -335,7 +335,7 @@ def servers_add(
     console.print(f"Added server {item.name} ({item.server_id})")
 
 
-@servers_app.command("update")
+@servers_app.command("update", no_args_is_help=True)
 def servers_update(
     ctx: typer.Context,
     server_ref: str,
@@ -366,7 +366,7 @@ def servers_update(
     console.print(f"Updated server {item.name} ({item.server_id})")
 
 
-@servers_app.command("delete")
+@servers_app.command("delete", no_args_is_help=True)
 def servers_delete(ctx: typer.Context, server_ref: str):
     runtime = _state(ctx)
     _backup_if_needed(runtime)
@@ -374,7 +374,7 @@ def servers_delete(ctx: typer.Context, server_ref: str):
     console.print(f"Deleted server {server_ref}")
 
 
-@servers_app.command("enable")
+@servers_app.command("enable", no_args_is_help=True)
 def servers_enable(
     ctx: typer.Context,
     server_ref: list[str],
@@ -387,7 +387,7 @@ def servers_enable(
     console.print(f"{updated.name}: enabled {len(updated.enabled_server_ids)} servers")
 
 
-@servers_app.command("enable-many")
+@servers_app.command("enable-many", no_args_is_help=True)
 def servers_enable_many(
     ctx: typer.Context,
     server_ref: list[str],
@@ -407,7 +407,7 @@ def servers_enable_many(
     )
 
 
-@servers_app.command("disable")
+@servers_app.command("disable", no_args_is_help=True)
 def servers_disable(
     ctx: typer.Context,
     server_ref: list[str],
@@ -438,7 +438,7 @@ def market_list(ctx: typer.Context, category: str | None = typer.Option(None, "-
     console.print(table)
 
 
-@market_app.command("show")
+@market_app.command("show", no_args_is_help=True)
 def market_show(ctx: typer.Context, tool_ref: str):
     runtime = _state(ctx)
     tool = find_market_tool(load_market_catalog(runtime.resources_dir), tool_ref)
@@ -459,7 +459,7 @@ def market_show(ctx: typer.Context, tool_ref: str):
     )
 
 
-@market_app.command("install")
+@market_app.command("install", no_args_is_help=True)
 def market_install(
     ctx: typer.Context,
     tool_ref: str,
@@ -504,7 +504,7 @@ def _sync_single_app(runtime: Runtime, app_ref: str) -> str:
     return f"Synced {target.name} -> {target.config_path}"
 
 
-@sync_app.command("app")
+@sync_app.command("app", no_args_is_help=True)
 def sync_one(ctx: typer.Context, app_ref: str):
     runtime = _state(ctx)
     message = _sync_single_app(runtime, app_ref)
@@ -555,7 +555,7 @@ def _import_mapping(
     return imported
 
 
-@import_app.command("app")
+@import_app.command("app", no_args_is_help=True)
 def import_from_app(ctx: typer.Context, app_ref: str):
     runtime = _state(ctx)
     _backup_if_needed(runtime)
@@ -563,7 +563,7 @@ def import_from_app(ctx: typer.Context, app_ref: str):
     console.print(f"Imported {count} server(s) from {app_ref}")
 
 
-@import_app.command("file")
+@import_app.command("file", no_args_is_help=True)
 def import_from_file(
     ctx: typer.Context,
     app_ref: str,
