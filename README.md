@@ -35,6 +35,12 @@ The implementation is grounded in first-party McpOne artifacts:
 - Full command list: [`docs/command-reference.md`](docs/command-reference.md)
 - Architecture and sync design: [`docs/architecture.md`](docs/architecture.md)
 - McpOne database reference: [`docs/database-reference.md`](docs/database-reference.md)
+- Feature support matrix: [`docs/feature-support-matrix.md`](docs/feature-support-matrix.md)
+- Write safety: [`docs/write-safety.md`](docs/write-safety.md)
+- Config sync spec: [`docs/config-sync-spec.md`](docs/config-sync-spec.md)
+- Market install spec: [`docs/market-install-spec.md`](docs/market-install-spec.md)
+- Testing guide: [`docs/testing-guide.md`](docs/testing-guide.md)
+- Release workflow: [`docs/release-workflow.md`](docs/release-workflow.md)
 
 ## Requirements
 

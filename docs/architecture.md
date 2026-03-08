@@ -1,142 +1,226 @@
 # Architecture
 
-## Overview
+## System Overview
 
-`mcpone-cli` has a simple architecture:
+`mcpone-cli` is a layered CLI around the McpOne desktop database and app-bundled
+resource manifests.
+
+Primary flow:
 
 1. load runtime settings
-2. talk to the McpOne SQLite store
-3. optionally load the bundled market catalog
-4. convert between McpOne records and JSON/TOML agent config files
-5. present commands via Typer
+2. open the McpOne SQLite database
+3. optionally load market manifests from the installed app bundle
+4. translate McpOne rows into JSON or TOML config entries
+5. expose the operations as Typer commands
 
-## Layer Breakdown
+## Layer Model
 
 ### `config.py`
 
 Responsibilities:
 
-- resolve default paths
-- load optional config from TOML
-- expose one `Settings` object
+- default path resolution
+- optional runtime config loading
+- user-configurable DB path and resource path
+
+Non-responsibilities:
+
+- no database logic
+- no config-sync mapping rules
+
+### `models.py`
+
+Responsibilities:
+
+- typed dataclasses for app, cluster, server, and market entities
+
+Non-responsibilities:
+
+- no persistence
+- no conversion logic
 
 ### `store.py`
 
 Responsibilities:
 
-- connect to the SQLite database
-- convert rows into typed dataclasses
-- create, update, and delete records
-- manage cluster membership arrays
-- create DB backups before writes when enabled
+- SQLite connections
+- row-to-dataclass mapping
+- JSON blob encoding and decoding
+- narrow database writes
+- DB backup creation
 
-This file is the authoritative McpOne persistence layer.
-
-### `market.py`
-
-Responsibilities:
-
-- load the McpOne resource catalog from app-bundled JSON files
-- expose market entries as `MarketTool` and `MarketConnection`
-- choose a connection template
-- replace `<PLACEHOLDER>` values with concrete arguments
+This is the canonical persistence layer.
 
 ### `formats.py`
 
 Responsibilities:
 
-- load MCP server maps from JSON or TOML files
-- write updated server maps back to disk
-- infer whether a target app uses bracketed or sanitized keys
-- translate a stored server into config-file form
+- load JSON and TOML config maps
+- write JSON and TOML config maps
+- infer target key style
+- build export-ready server objects
+- parse imported server keys
+
+This is the canonical config-format layer.
+
+### `market.py`
+
+Responsibilities:
+
+- load app-bundled market manifests
+- pick a connection variant
+- materialize placeholders into concrete server values
+
+This is the canonical market-install layer.
 
 ### `cli.py`
 
 Responsibilities:
 
-- parse user arguments
-- orchestrate store, format, and market operations
-- render tables and JSON output
+- user-facing command registration
+- argument validation at the CLI boundary
+- composition of store, format, and market operations
+- Rich output rendering
 
-## Data Flow
+Non-responsibilities:
 
-### Read-only inspection
+- business logic should not drift into `cli.py` if it is reusable elsewhere
 
-1. CLI command calls store method
-2. store reads SQLite rows
-3. rows become dataclasses
-4. CLI renders Rich tables or JSON
+## Runtime Dependencies
 
-### Market install
+The project relies on:
 
-1. CLI loads market manifest files from the app bundle
-2. selected market connection template is materialized with user parameters
-3. store adds a new `ZADDEDSERVER` row
-4. store enables that server ID for the target cluster
+- Python stdlib `sqlite3`, `json`, `tomllib`
+- `tomli_w` for TOML output
+- `typer` for CLI UX
+- `rich` for human-readable tables and JSON output
 
-### Import from agent config
+## Data Sources
 
-1. CLI resolves app config path and root key
-2. format loader reads JSON or TOML
-3. server keys are parsed to extract names and optional IDs
-4. missing servers are inserted into `ZADDEDSERVER`
+### Live McpOne database
 
-### Sync to agent config
+Used for:
 
-1. CLI resolves the app's active cluster
-2. enabled server IDs are loaded from the cluster
-3. store resolves those IDs to servers
-4. format layer maps those servers into JSON or TOML entries
-5. file is written back to disk
+- app definitions
+- cluster definitions
+- installed/imported server definitions
 
-## Key Compatibility Decisions
+### App-bundled resource manifests
 
-### Config key naming
+Used for:
 
-Two styles are currently supported:
+- market catalog browsing
+- market connection template materialization
 
-- bracketed: `Server Name[id=ABC123]`
-- sanitized: `Server_Name_id_ABC123`
+### Agent config files
 
-The tool infers style from the target app config path and key.
+Used for:
 
-### JSON blobs inside SQLite
+- import into the McpOne database
+- sync from the active cluster back out to agent tools
 
-Several McpOne Core Data columns store JSON bytes rather than separate tables.
+## Main Data Flows
 
-Examples:
+### Inspection flow
 
-- `ZCLUSTER.ZENABLEDADDEDSERVERIDSDATA`
-- `ZADDEDSERVER.ZARGS`
-- `ZADDEDSERVER.ZENV`
-- `ZADDEDSERVER.ZHEADERS`
-- `ZADDEDSERVER.ZPARAMETERS`
-- `ZADDEDSERVER.ZCUSTOMFIELDSBYAGENTDATA`
+```text
+CLI -> store -> sqlite -> dataclasses -> Rich table / JSON output
+```
 
-The store layer treats those as first-class JSON structures.
+### Cluster write flow
 
-### Entity IDs
+```text
+CLI -> store -> update cluster membership blob -> commit
+```
 
-SQLite rows include Core Data entity metadata such as `Z_ENT`.
-The tool reads existing values when possible and falls back to stable defaults in
-fixture databases.
+### Market install flow
 
-## Why Python
+```text
+CLI
+  -> market manifest loader
+  -> connection selection
+  -> placeholder materialization
+  -> store.add_server(...)
+  -> store.enable_servers(...)
+```
 
-Python was chosen because it is the most convenient fit for this repo:
+### Import flow
 
-- excellent SQLite support in the stdlib
-- simple JSON and TOML handling
-- fast packaging for a public CLI
-- straightforward test fixtures
-- easy maintenance for contributors who are not Swift developers
+```text
+CLI
+  -> resolve app config file and key
+  -> formats.load_config_map(...)
+  -> parse server keys
+  -> store.add_server(...) for missing records
+```
 
-## Extension Points
+### Sync flow
 
-Likely future additions:
+```text
+CLI
+  -> app.active_cluster_id
+  -> cluster.enabled_server_ids
+  -> store.get_servers_by_ids(...)
+  -> formats.enabled_servers_to_config(...)
+  -> formats.write_config_map(...)
+```
 
-- `diff` layer between DB and config files
-- structured JSON output mode
-- hidden server support
-- extra Core Data tables if new McpOne features need them
-- shell completion and packaging automation
+## Design Decisions
+
+### The database is canonical
+
+App config path, root key, and active cluster are taken from the McpOne DB.
+They are not duplicated in runtime config.
+
+### JSON blobs are first-class
+
+Several important Core Data columns are actually UTF-8 JSON blobs.
+The CLI treats them as structured data, not opaque binary.
+
+### Key naming is target-dependent
+
+The same server record may export with different names depending on the target
+tool:
+
+- bracketed keys such as `Server[id=ABC123]`
+- sanitized keys such as `Server_id_ABC123`
+
+### Narrow writes are preferred
+
+The CLI mutates only the fields it has verified and documented.
+This minimizes accidental drift from desktop-app expectations.
+
+### Fixture-first testing
+
+The live DB is for smoke checks, not for normal automated tests.
+Automated tests rely on a minimal verified schema fixture.
+
+## Extension Architecture
+
+### Good extension pattern
+
+- new persistence rule -> `store.py`
+- new config mapping rule -> `formats.py`
+- new market rule -> `market.py`
+- new user flow -> `cli.py`
+- new invariant -> docs + tests
+
+### Bad extension pattern
+
+- embedding SQL directly in `cli.py`
+- duplicating config-path logic outside the DB
+- writing undocumented table fields “because they seem related”
+
+## Current Limits
+
+- no hidden-server management commands
+- no DB restore command
+- no diff engine between DB and config files
+- no dry-run mode for write commands
+- no machine-readable JSON output mode for all commands
+
+See also:
+
+- [`feature-support-matrix.md`](feature-support-matrix.md)
+- [`write-safety.md`](write-safety.md)
+- [`config-sync-spec.md`](config-sync-spec.md)

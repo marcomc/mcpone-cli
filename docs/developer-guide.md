@@ -2,30 +2,39 @@
 
 ## Purpose
 
-This document is for contributors who need to extend `mcpone-cli` without
-repeating the original McpOne reverse-engineering work.
+This guide is for developers who need to maintain or extend `mcpone-cli`
+without re-analyzing McpOne Desktop from scratch.
 
-The important point is simple:
+Read this first, then use the linked deeper references:
 
-- the CLI is grounded in McpOne first-party artifacts
-- the DB model and config sync conventions are already documented here
-- future work should build on these references, not rediscover them
+- architecture:
+  [`architecture.md`](architecture.md)
+- database model:
+  [`database-reference.md`](database-reference.md)
+- command surface:
+  [`command-reference.md`](command-reference.md)
+- CLI support coverage:
+  [`feature-support-matrix.md`](feature-support-matrix.md)
+- write safety:
+  [`write-safety.md`](write-safety.md)
+- sync behavior:
+  [`config-sync-spec.md`](config-sync-spec.md)
+- market behavior:
+  [`market-install-spec.md`](market-install-spec.md)
+- testing workflow:
+  [`testing-guide.md`](testing-guide.md)
 
 ## Canonical Sources
 
-The project was derived from the following first-party sources:
+The project is grounded in first-party McpOne artifacts:
 
-- the installed McpOne app bundle at
-  `/Applications/McpOne.app`
-- the bundled resource manifests under
-  `/Applications/McpOne.app/Contents/Resources/*.json`
-- the bundled TOML implementation note at
-  `/Applications/McpOne.app/Contents/Resources/TOML_IMPLEMENTATION.md`
-- the live McpOne SQLite database at
-  `~/Library/Containers/com.ryankolter9.McpOne/Data/Library/Application Support/McpOne/McpOne.sqlite`
+- `/Applications/McpOne.app`
+- `/Applications/McpOne.app/Contents/Resources/*.json`
+- `/Applications/McpOne.app/Contents/Resources/TOML_IMPLEMENTATION.md`
+- the live McpOne SQLite database
 - the official App Store listing for MCP One
 
-When changing behavior, prefer checking these artifacts first.
+If a behavior is unclear, prefer checking those sources over making a guess.
 
 ## Project Layout
 
@@ -34,149 +43,131 @@ When changing behavior, prefer checking these artifacts first.
 - [`src/mcpone_cli/models.py`](../src/mcpone_cli/models.py)
   internal dataclasses
 - [`src/mcpone_cli/store.py`](../src/mcpone_cli/store.py)
-  SQLite repository for `ZADDEDAPP`, `ZCLUSTER`, and `ZADDEDSERVER`
-- [`src/mcpone_cli/market.py`](../src/mcpone_cli/market.py)
-  market catalog loading and connection materialization
+  SQLite repository and write logic
 - [`src/mcpone_cli/formats.py`](../src/mcpone_cli/formats.py)
-  JSON/TOML config parsing and writing
+  JSON and TOML mapping rules
+- [`src/mcpone_cli/market.py`](../src/mcpone_cli/market.py)
+  market manifest loading and materialization
 - [`src/mcpone_cli/cli.py`](../src/mcpone_cli/cli.py)
-  Typer command registration and orchestration
+  Typer command wiring and user-facing flows
 - [`tests/conftest.py`](../tests/conftest.py)
-  fixture database and resource manifests
+  fixture DB and fixture market catalog
 - [`tests/test_e2e.py`](../tests/test_e2e.py)
-  end-to-end CLI tests
+  end-to-end CLI behavior tests
 
 ## Mental Model
 
-There are four major concepts:
+The CLI is built around four concepts:
 
 1. `AddedApp`
-   A client integration such as Codex, Claude, Gemini CLI, or a custom app.
-   It points to a config file path, a root key, and an active cluster ID.
-
+   Represents an integration target such as Codex or Claude CLI.
 2. `Cluster`
-   A named grouping of enabled server IDs for an app.
-   McpOne stores enabled servers as a JSON array blob in
-   `ZCLUSTER.ZENABLEDADDEDSERVERIDSDATA`.
-
+   Represents a named set of enabled added server IDs for one app.
 3. `AddedServer`
-   A concrete MCP server definition with command, args, env, headers, version,
-   source, type, and optional URL.
-
+   Represents a concrete installed/imported MCP server definition.
 4. `MarketTool`
-   A catalog entry shipped in McpOne resources.
-   It may contain multiple connection templates such as `STDIO` or
-   `STREAMABLE_HTTP`.
+   Represents an app-bundled marketplace entry with connection templates.
 
-## Supported Behaviors
+## Maintainer Workflow
 
-The CLI currently implements:
-
-- app inspection
-- custom app creation
-- cluster creation, rename, deletion, inspection
-- active cluster switching
-- server listing, inspection, add, update, delete
-- cluster server enable and disable
-- market catalog list and show
-- market tool install into McpOne
-- config import into McpOne
-- config sync from McpOne to agent files
-- environment diagnostics
-
-If you add a new feature, update:
-
-- [`README.md`](../README.md)
-- [`docs/user-guide.md`](user-guide.md)
-- [`docs/command-reference.md`](command-reference.md)
-- [`CHANGELOG.md`](../CHANGELOG.md)
-
-## Database Model
-
-See the full reference in [database-reference.md](database-reference.md).
-
-The key verified tables are:
-
-- `ZADDEDAPP`
-- `ZCLUSTER`
-- `ZADDEDSERVER`
-
-Important field behavior already verified:
-
-- `ZADDEDAPP.ZAIAGENTJSONFILEPATH` stores the target config path
-- `ZADDEDAPP.ZAIAGENTJSONKEY` stores the config root key
-- `ZADDEDAPP.ZACTIVECLUSTERID` stores the active cluster ID
-- `ZCLUSTER.ZENABLEDADDEDSERVERIDSDATA` stores JSON bytes for enabled server IDs
-- `ZADDEDSERVER.ZARGS`, `ZENV`, `ZHEADERS`, `ZPARAMETERS`,
-  `ZCUSTOMFIELDSBYAGENTDATA` are JSON blobs
-
-## Format Rules
-
-See the full reference in [architecture.md](architecture.md).
-
-Current format decisions:
-
-- TOML files are read and written with `tomllib` plus `tomli_w`
-- JSON files are read and written with the stdlib `json` module
-- Codex-style files use `mcp_servers`
-- most other current agent files use `mcpServers`
-- key naming is either bracketed or sanitized depending on the target app
-
-## Local Development Workflow
-
-Create the environment:
+Standard loop:
 
 ```bash
+make check-prereqs
 make install-dev
-```
-
-Run lint:
-
-```bash
 make lint
-```
-
-Run tests:
-
-```bash
 make test
 ```
 
-Run the CLI against the live environment:
+Smoke check against the live environment:
 
 ```bash
 mcpone-cli doctor
 mcpone-cli apps list
 ```
 
-## Testing Strategy
+## Documentation Duties
 
-The tests intentionally avoid mutating the live McpOne DB.
+When behavior changes, update the relevant docs in the same change:
 
-Instead they use:
+- user-facing command behavior:
+  [`README.md`](../README.md),
+  [`user-guide.md`](user-guide.md),
+  [`command-reference.md`](command-reference.md)
+- developer-facing design or invariants:
+  [`architecture.md`](architecture.md),
+  [`database-reference.md`](database-reference.md),
+  [`write-safety.md`](write-safety.md),
+  [`config-sync-spec.md`](config-sync-spec.md),
+  [`market-install-spec.md`](market-install-spec.md)
+- release-visible changes:
+  [`CHANGELOG.md`](../CHANGELOG.md)
+- future work or missing behavior:
+  [`TODO.md`](../TODO.md)
 
-- a temporary SQLite fixture database with the verified schema subset
-- temporary resource JSON files for a small market catalog
-- `typer.testing.CliRunner` for end-to-end command execution
+## How To Extend The CLI
 
-When adding features:
+### Add a new command group
 
-- prefer a fixture-first test
-- use the live DB only for manual smoke checks
-- keep end-to-end tests focused on user-visible behavior
+1. add the command implementation in [`cli.py`](../src/mcpone_cli/cli.py)
+2. keep orchestration in `cli.py`, but data logic in lower layers
+3. add fixture-backed tests
+4. document the new commands in
+   [`command-reference.md`](command-reference.md)
 
-## Contribution Rules
+### Add a new database field or table
 
-- keep write operations explicit
-- preserve current first-party-compatible field names and config semantics
-- do not silently broaden support claims beyond what has been verified
-- update docs when behavior or assumptions change
+1. verify the live schema and actual desktop-app usage
+2. document the table or field in
+   [`database-reference.md`](database-reference.md)
+3. extend [`store.py`](../src/mcpone_cli/store.py)
+4. add fixture coverage
+5. update write-safety notes if the field is mutable
+
+### Add a new agent config format
+
+1. document the target config structure in
+   [`config-sync-spec.md`](config-sync-spec.md)
+2. extend [`formats.py`](../src/mcpone_cli/formats.py)
+3. add import and sync tests
+4. update the feature matrix
+
+### Add a new market behavior
+
+1. confirm how the McpOne resource manifest expresses it
+2. document the rule in
+   [`market-install-spec.md`](market-install-spec.md)
+3. extend [`market.py`](../src/mcpone_cli/market.py)
+4. add coverage for placeholders and edge cases
+
+## Development Rules
+
+- keep the database as the canonical source for app config paths and active
+  clusters
+- keep write operations explicit and narrow
+- do not silently broaden support claims
+- do not add undocumented fallback behavior
 - run lint after every modification
+- prefer fixture DB tests over mutating the live McpOne database
 
-## Recommended Next Contributions
+## Common Failure Modes
 
-- implement safe DB restore support
-- add JSON output mode for automation consumers
-- add richer handling for hidden servers and custom fields
-- add diff and dry-run commands for sync
-- add coverage for more market connection variants
+- wrong Make target name:
+  use `make help` and prefer `check-prereqs`
+- `mcpone-cli` missing after install:
+  verify `~/.local/bin` is on `PATH`
+- sync/import failures:
+  inspect `ZAIAGENTJSONFILEPATH` and `ZAIAGENTJSONKEY` in the app row
+- broken fixture tests:
+  confirm the fixture schema still matches the verified live tables
+- malformed blob decoding:
+  inspect the affected row directly in SQLite and document the new shape if real
+
+## Suggested Reading Order For New Contributors
+
+1. [`README.md`](../README.md)
+2. [`feature-support-matrix.md`](feature-support-matrix.md)
+3. [`architecture.md`](architecture.md)
+4. [`database-reference.md`](database-reference.md)
+5. [`config-sync-spec.md`](config-sync-spec.md)
+6. [`testing-guide.md`](testing-guide.md)
