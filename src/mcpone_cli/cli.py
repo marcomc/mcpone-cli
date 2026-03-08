@@ -8,6 +8,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from . import __version__
 from .config import load_settings
 from .formats import (
     enabled_servers_to_config,
@@ -67,6 +68,12 @@ def _backup_if_needed(runtime: Runtime) -> None:
         console.print(f"[dim]DB backup:[/dim] {backup_path}")
 
 
+def _version_callback(value: bool) -> None:
+    if value:
+        console.print(__version__)
+        raise typer.Exit()
+
+
 def _parse_target(raw: str) -> tuple[str, str]:
     for separator in ("::", "/"):
         if separator in raw:
@@ -80,7 +87,15 @@ def _parse_target(raw: str) -> tuple[str, str]:
 def main_callback(
     ctx: typer.Context,
     config: Path | None = typer.Option(None, "--config", help="Optional config.toml path."),
+    version: bool = typer.Option(
+        False,
+        "--version",
+        help="Show the mcpone-cli version and exit.",
+        callback=_version_callback,
+        is_eager=True,
+    ),
 ):
+    del version
     settings = load_settings(config)
     ctx.obj = Runtime(
         store=McpOneStore(settings.db_path),

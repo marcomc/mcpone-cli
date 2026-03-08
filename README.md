@@ -64,7 +64,14 @@ Default live DB path:
 
 ## Install
 
-Check prerequisites first:
+Clone the repository first:
+
+```bash
+git clone <repo-url>
+cd mcpone-cli
+```
+
+Then check prerequisites from the project root:
 
 ```bash
 make check-deps
@@ -73,10 +80,10 @@ make check-deps
 Then install:
 
 ```bash
-git clone <repo-url>
-cd mcpone-cli
 make install
 ```
+
+If you already have a local checkout, start at `make check-deps`.
 
 This follows the same pattern as your other local CLI projects:
 

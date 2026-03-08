@@ -373,6 +373,13 @@ The following columns are treated as UTF-8 JSON blobs by the CLI:
 - `ZADDEDSERVER.ZPARAMETERS`
 - `ZADDEDSERVER.ZCUSTOMFIELDSBYAGENTDATA`
 
+Observed storage caveat:
+
+- McpOne does not always persist these JSON-backed columns as SQLite `BLOB`
+- some real-world rows store the same UTF-8 JSON payload as SQLite `TEXT`
+- the CLI therefore decodes both `BLOB` and `TEXT` values for these fields
+- malformed JSON still falls back to an empty structure
+
 Typical decoded shapes:
 
 - hidden/enabled IDs: `list[str]`
@@ -385,6 +392,7 @@ Typical decoded shapes:
 Failure handling in the CLI:
 
 - invalid or empty blob data falls back to an empty structure
+- legacy `TEXT` JSON values are accepted in the same code path as `BLOB`
 - the CLI does not crash on malformed blobs
 - the CLI only rewrites blobs it explicitly manages
 
