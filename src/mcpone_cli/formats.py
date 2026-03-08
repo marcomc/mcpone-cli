@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import tomllib
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,12 @@ from .models import AddedApp, AddedServer
 
 SERVER_ID_PATTERN = re.compile(r"\[id=([A-Z0-9]{6})\]$")
 SANITIZED_ID_PATTERN = re.compile(r"_id_([A-Z0-9]{6})$")
+
+
+@dataclass(frozen=True, slots=True)
+class SyncProfile:
+    key_style: str
+    add_tools_wildcard: bool = False
 
 
 def load_config_map(path: Path, key: str) -> dict[str, dict[str, Any]]:
@@ -53,14 +60,20 @@ def write_config_map(path: Path, key: str, value: dict[str, dict[str, Any]]) -> 
             handle.write("\n")
 
 
-def infer_key_style(app: AddedApp) -> str:
+def infer_sync_profile(app: AddedApp) -> SyncProfile:
     config_path = (app.config_path or "").lower()
     config_key = app.config_key or ""
+    app_name = app.name.casefold()
+    ai_agent_id = (app.ai_agent_id or "").casefold()
+    if config_path.endswith("mcp-config.json"):
+        return SyncProfile(key_style="sanitized", add_tools_wildcard=True)
+    if config_path.endswith("/settings.json") and ("gemini" in app_name or ai_agent_id == "gemini"):
+        return SyncProfile(key_style="sanitized")
     if config_key == "mcp_servers":
-        return "sanitized"
+        return SyncProfile(key_style="sanitized")
     if config_path.endswith("mcp-config.json") or config_path.endswith("/mcp.json"):
-        return "sanitized"
-    return "bracketed"
+        return SyncProfile(key_style="sanitized")
+    return SyncProfile(key_style="bracketed")
 
 
 def slugify_name(name: str) -> str:
@@ -87,7 +100,9 @@ def parse_server_key(raw: str) -> tuple[str, str | None]:
     return raw, None
 
 
-def server_to_config_dict(server: AddedServer) -> dict[str, Any]:
+def server_to_config_dict(
+    server: AddedServer, *, add_tools_wildcard: bool = False
+) -> dict[str, Any]:
     data: dict[str, Any] = {}
     if server.command:
         data["command"] = server.command
@@ -99,6 +114,8 @@ def server_to_config_dict(server: AddedServer) -> dict[str, Any]:
         data["url"] = server.url
     if server.headers:
         data["headers"] = server.headers
+    if add_tools_wildcard:
+        data["tools"] = ["*"]
     return data
 
 
@@ -106,8 +123,10 @@ def enabled_servers_to_config(
     app: AddedApp,
     servers: list[AddedServer],
 ) -> dict[str, dict[str, Any]]:
-    style = infer_key_style(app)
+    profile = infer_sync_profile(app)
     return {
-        build_server_key(server.name, server.server_id, style): server_to_config_dict(server)
+        build_server_key(server.name, server.server_id, profile.key_style): server_to_config_dict(
+            server, add_tools_wildcard=profile.add_tools_wildcard
+        )
         for server in sorted(servers, key=lambda item: item.name.lower())
     }

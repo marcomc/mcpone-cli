@@ -350,6 +350,60 @@ def test_sync_serializes_stdio_and_http_servers(runner, temp_db: Path, resources
     }
 
 
+def test_sync_sanitizes_gemini_server_keys(runner, temp_db: Path, resources_dir: Path) -> None:
+    config_file = _config_file(temp_db, resources_dir)
+    target_path = temp_db.parent / "settings.json"
+    app_name = "Gemini CLI"
+
+    _add_custom_app(runner, config_file, app_name, target_path, "mcpServers")
+    server_id = _add_server(
+        runner,
+        config_file,
+        "Docker MCP Toolkit",
+        command="docker",
+        args=["mcp", "gateway", "run"],
+    )
+    _enable_servers(runner, config_file, app_name, "Cluster A", ["Docker MCP Toolkit"])
+
+    sync_result = runner.invoke(
+        app,
+        ["--config", str(config_file), "sync", "app", app_name],
+    )
+    assert sync_result.exit_code == 0, sync_result.output
+
+    output_payload = _read_config(target_path)["mcpServers"]
+    assert f"Docker_MCP_Toolkit_id_{server_id}" in output_payload
+    assert f"Docker MCP Toolkit[id={server_id}]" not in output_payload
+
+
+def test_sync_adds_copilot_tools_and_sanitized_keys(
+    runner, temp_db: Path, resources_dir: Path
+) -> None:
+    config_file = _config_file(temp_db, resources_dir)
+    target_path = temp_db.parent / "mcp-config.json"
+    app_name = "Copilot"
+
+    _add_custom_app(runner, config_file, app_name, target_path, "mcpServers")
+    server_id = _add_server(
+        runner,
+        config_file,
+        "Context7",
+        command="npx",
+        args=["-y", "@upstash/context7-mcp@latest"],
+    )
+    _enable_servers(runner, config_file, app_name, "Cluster A", ["Context7"])
+
+    sync_result = runner.invoke(
+        app,
+        ["--config", str(config_file), "sync", "app", app_name],
+    )
+    assert sync_result.exit_code == 0, sync_result.output
+
+    output_payload = _read_config(target_path)["mcpServers"]
+    assert output_payload[f"Context7_id_{server_id}"]["tools"] == ["*"]
+    assert f"Context7[id={server_id}]" not in output_payload
+
+
 def test_import_sync_round_trip_consistency(runner, temp_db: Path, resources_dir: Path) -> None:
     config_file = _config_file(temp_db, resources_dir)
     target_path = temp_db.parent / "roundtrip.json"

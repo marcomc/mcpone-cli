@@ -342,7 +342,9 @@ McpOne-managed agent files:
 Key naming styles:
 
 - Codex and Copilot-style configs use sanitized keys such as `Context7_id_ABC123`
-- Claude and Gemini-style configs use bracketed keys such as `Context7[id=ABC123]`
+- Gemini is also exported with sanitized keys such as `Context7_id_ABC123`
+- Claude-style configs use bracketed keys such as `Context7[id=ABC123]`
+- Copilot sync also injects `tools: ["*"]` into each server entry for CLI compatibility
 
 ## Safety Notes
 

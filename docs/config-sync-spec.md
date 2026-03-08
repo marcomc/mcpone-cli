@@ -67,7 +67,7 @@ Context7[id=7J6VKW]
 Used for:
 
 - Claude-style configs
-- Gemini-style configs
+- generic JSON targets without a known compatibility override
 
 ### Sanitized style
 
@@ -80,8 +80,20 @@ Context7_id_7J6VKW
 Used for:
 
 - Codex TOML
+- Gemini JSON written by `mcpone-cli`
 - Copilot-style JSON
 - VS Code-style JSON if configured similarly
+
+## Client Compatibility Rules
+
+`mcpone-cli` applies a small amount of client-specific export behavior when the
+target app is known to reject bracketed MCP server names.
+
+- Gemini CLI exports `mcpServers` entries with sanitized keys such as
+  `Context7_id_7J6VKW`
+- Copilot exports sanitized keys and injects `tools = ["*"]` into each server
+  entry for Copilot CLI compatibility
+- Claude-style JSON remains bracketed by default
 
 ## Value Mapping
 
