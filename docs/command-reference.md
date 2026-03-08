@@ -9,6 +9,13 @@ mcpone-cli --config /path/to/config.toml <group> <command>
 Global option:
 
 - `--config`: override the default runtime config file
+- `--json`: emit machine-readable JSON instead of Rich tables or status text
+
+Example:
+
+```bash
+mcpone-cli --json apps matrix Codex
+```
 
 ## apps
 
@@ -24,6 +31,19 @@ Shows one app as JSON.
 
 - app name
 - app ID
+
+### `apps matrix <app-ref>`
+
+Shows a GUI-style server matrix for one app.
+
+- rows: servers
+- columns: clusters for the app
+- cell `Y`: the server is enabled in that cluster
+- active cluster: marked in the column header
+
+Option:
+
+- `--enabled-only`: hide servers that are not enabled in any cluster for the app
 
 ### `apps add-custom <name> <config-path>`
 

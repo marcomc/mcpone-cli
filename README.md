@@ -97,6 +97,14 @@ For contributors, use:
 make install-dev
 ```
 
+For programmatic use from another tool or agent, prepend the global `--json`
+flag:
+
+```bash
+mcpone-cli --json apps list
+mcpone-cli --json apps matrix Codex
+```
+
 `make check-deps` verifies:
 
 - `python3` exists and is at least 3.11

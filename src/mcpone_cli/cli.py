@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import typer
@@ -24,7 +24,6 @@ console = Console()
 app = typer.Typer(
     help="Manage McpOne apps, clusters, servers, market tools, and config sync.",
     invoke_without_command=True,
-    no_args_is_help=True,
 )
 apps_app = typer.Typer(help="Manage McpOne apps.", invoke_without_command=True)
 clusters_app = typer.Typer(help="Manage McpOne clusters.", invoke_without_command=True)
@@ -49,6 +48,7 @@ class Runtime:
     store: McpOneStore
     resources_dir: Path
     backup_on_write: bool
+    json_output: bool
 
 
 def _state(ctx: typer.Context) -> Runtime:
@@ -65,21 +65,134 @@ def _parse_pairs(items: list[str]) -> dict[str, str]:
     return output
 
 
-def _backup_if_needed(runtime: Runtime) -> None:
+def _emit_json(payload: object) -> None:
+    console.print_json(json.dumps(payload))
+
+
+def _emit(
+    runtime: Runtime,
+    *,
+    payload: object,
+    table: Table | None = None,
+    text: str | None = None,
+) -> None:
+    if runtime.json_output:
+        _emit_json(payload)
+        return
+    if table is not None:
+        console.print(table)
+        return
+    if text is not None:
+        console.print(text)
+    elif isinstance(payload, str):
+        console.print(payload)
+    else:
+        _emit_json(payload)
+
+
+def _command_entries(ctx: typer.Context) -> list[dict[str, str]]:
+    command = ctx.command
+    commands = getattr(command, "commands", {})
+    return [
+        {"name": name, "help": subcommand.get_short_help_str()}
+        for name, subcommand in sorted(commands.items())
+    ]
+
+
+def _help_payload(ctx: typer.Context) -> dict[str, object]:
+    return {
+        "group": "mcpone-cli"
+        if (ctx.info_name or "") == "root"
+        else (ctx.info_name or "mcpone-cli"),
+        "help": ctx.command.help,
+        "usage": ctx.get_usage().strip(),
+        "commands": _command_entries(ctx),
+    }
+
+
+def _app_payload(item) -> dict[str, object]:
+    return {
+        "name": item.name,
+        "app_id": item.app_id,
+        "ai_agent_id": item.ai_agent_id,
+        "active_cluster_id": item.active_cluster_id,
+        "config_path": item.config_path,
+        "config_key": item.config_key,
+        "project_path": item.project_path,
+        "explanation": item.explanation,
+    }
+
+
+def _cluster_payload(item, app_name: str | None = None) -> dict[str, object]:
+    payload = {
+        "name": item.name,
+        "cluster_id": item.cluster_id,
+        "app_pk": item.app_pk,
+        "enabled_server_ids": item.enabled_server_ids,
+    }
+    if app_name is not None:
+        payload["app_name"] = app_name
+    return payload
+
+
+def _server_payload(item) -> dict[str, object]:
+    return server_to_config_dict(item) | {
+        "name": item.name,
+        "server_id": item.server_id,
+        "source": item.source,
+        "server_type": item.server_type,
+        "version": item.version,
+        "headers": item.headers,
+        "parameters": item.parameters,
+        "custom_fields": item.custom_fields,
+    }
+
+
+def _stringify(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (dict, list)):
+        return json.dumps(value)
+    return str(value)
+
+
+def _kv_table(rows: list[tuple[str, str]]) -> Table:
+    table = Table("Field", "Value")
+    for key, value in rows:
+        table.add_row(key, value)
+    return table
+
+
+def _backup_if_needed(runtime: Runtime) -> str | None:
     if runtime.backup_on_write and runtime.store.db_path.exists():
         backup_path = runtime.store.backup()
-        console.print(f"[dim]DB backup:[/dim] {backup_path}")
+        if not runtime.json_output:
+            console.print(f"[dim]DB backup:[/dim] {backup_path}")
+        return str(backup_path)
+    return None
 
 
-def _version_callback(value: bool) -> None:
-    if value:
-        console.print(__version__)
-        raise typer.Exit()
+def _runtime_from_ctx(ctx: typer.Context) -> Runtime | None:
+    if isinstance(ctx.obj, Runtime):
+        return ctx.obj
+    parent = ctx.parent
+    while parent is not None:
+        if isinstance(parent.obj, Runtime):
+            return parent.obj
+        parent = parent.parent
+    return None
 
 
 def _group_help_callback(ctx: typer.Context) -> None:
     if ctx.invoked_subcommand is None:
-        console.print(ctx.get_help())
+        runtime = _runtime_from_ctx(ctx)
+        if runtime is None:
+            console.print(ctx.get_help())
+            raise typer.Exit()
+        if runtime.json_output:
+            _emit_json(_help_payload(ctx))
+        else:
+            console.print(ctx.get_help())
         raise typer.Exit()
 
 
@@ -96,21 +209,30 @@ def _parse_target(raw: str) -> tuple[str, str]:
 def main_callback(
     ctx: typer.Context,
     config: Path | None = typer.Option(None, "--config", help="Optional config.toml path."),
-    version: bool = typer.Option(
+    json_output: bool = typer.Option(
         False,
-        "--version",
-        help="Show the mcpone-cli version and exit.",
-        callback=_version_callback,
-        is_eager=True,
+        "--json",
+        help="Emit machine-readable JSON output.",
     ),
+    version: bool = typer.Option(False, "--version", help="Show the mcpone-cli version and exit."),
 ):
-    del version
     settings = load_settings(config)
     ctx.obj = Runtime(
         store=McpOneStore(settings.db_path),
         resources_dir=settings.resources_dir,
         backup_on_write=settings.backup_on_write,
+        json_output=json_output,
     )
+    runtime = _state(ctx)
+    if version:
+        _emit(runtime, payload={"version": __version__}, text=__version__)
+        raise typer.Exit()
+    if ctx.invoked_subcommand is None:
+        if runtime.json_output:
+            _emit_json(_help_payload(ctx))
+        else:
+            console.print(ctx.get_help())
+        raise typer.Exit()
 
 
 @apps_app.callback()
@@ -146,35 +268,127 @@ def import_callback(ctx: typer.Context) -> None:
 @apps_app.command("list")
 def apps_list(ctx: typer.Context):
     runtime = _state(ctx)
-    table = Table("Name", "App ID", "Agent", "Active Cluster", "Config")
-    for item in runtime.store.list_apps():
+    items = runtime.store.list_apps()
+    cluster_names_by_app = {
+        item.name: {
+            cluster.cluster_id: cluster.name for cluster in runtime.store.list_clusters(item.name)
+        }
+        for item in items
+    }
+    table = Table("Name", "Agent", "Active Cluster", "Config")
+    for item in items:
         table.add_row(
             item.name,
-            item.app_id,
             item.ai_agent_id or "",
-            item.active_cluster_id or "",
+            cluster_names_by_app.get(item.name, {}).get(item.active_cluster_id or "", ""),
             item.config_path or "",
         )
-    console.print(table)
+    _emit(
+        runtime,
+        payload={"apps": [_app_payload(item) for item in items], "count": len(items)},
+        table=table,
+    )
 
 
 @apps_app.command("show", no_args_is_help=True)
 def apps_show(ctx: typer.Context, app_ref: str):
     runtime = _state(ctx)
     item = runtime.store.get_app(app_ref)
-    console.print_json(
-        json.dumps(
-            {
-                "name": item.name,
-                "app_id": item.app_id,
-                "ai_agent_id": item.ai_agent_id,
-                "active_cluster_id": item.active_cluster_id,
-                "config_path": item.config_path,
-                "config_key": item.config_key,
-                "project_path": item.project_path,
-                "explanation": item.explanation,
-            }
-        )
+    active_cluster_name = ""
+    if item.active_cluster_id:
+        clusters_by_id = {
+            cluster.cluster_id: cluster.name for cluster in runtime.store.list_clusters(item.name)
+        }
+        active_cluster_name = clusters_by_id.get(item.active_cluster_id, "")
+    _emit(
+        runtime,
+        payload=_app_payload(item),
+        table=_kv_table(
+            [
+                ("Name", item.name),
+                ("Agent", item.ai_agent_id or ""),
+                ("Active Cluster", active_cluster_name),
+                ("Config Path", item.config_path or ""),
+                ("Config Key", item.config_key or ""),
+                ("Project Path", item.project_path or ""),
+                ("Explanation", item.explanation or ""),
+            ]
+        ),
+    )
+
+
+@apps_app.command("matrix", no_args_is_help=True)
+def apps_matrix(
+    ctx: typer.Context,
+    app_ref: str,
+    enabled_only: bool = typer.Option(
+        False,
+        "--enabled-only",
+        help="Only show servers enabled in at least one cluster for the app.",
+    ),
+):
+    runtime = _state(ctx)
+    app_item = runtime.store.get_app(app_ref)
+    clusters = sorted(
+        runtime.store.list_clusters(app_item.name), key=lambda item: item.name.casefold()
+    )
+    if not clusters:
+        raise typer.BadParameter(f"App has no clusters: {app_item.name}")
+
+    server_ids_by_cluster = {
+        cluster.cluster_id: set(cluster.enabled_server_ids) for cluster in clusters
+    }
+    enabled_server_ids = {
+        server_id for cluster in clusters for server_id in cluster.enabled_server_ids
+    }
+    servers = runtime.store.list_servers()
+    if enabled_only:
+        servers = [server for server in servers if server.server_id in enabled_server_ids]
+
+    table = Table("Server")
+    for cluster in clusters:
+        label = cluster.name
+        if app_item.active_cluster_id == cluster.cluster_id:
+            label = f"{label} (active)"
+        table.add_column(label)
+
+    for server in servers:
+        row = [server.name]
+        for cluster in clusters:
+            row.append("Y" if server.server_id in server_ids_by_cluster[cluster.cluster_id] else "")
+        table.add_row(*row)
+    _emit(
+        runtime,
+        payload={
+            "app": _app_payload(app_item),
+            "clusters": [
+                {
+                    "name": cluster.name,
+                    "cluster_id": cluster.cluster_id,
+                    "is_active": app_item.active_cluster_id == cluster.cluster_id,
+                }
+                for cluster in clusters
+            ],
+            "servers": [
+                {
+                    "name": server.name,
+                    "server_id": server.server_id,
+                    "enabled_in_clusters": [
+                        cluster.cluster_id
+                        for cluster in clusters
+                        if server.server_id in server_ids_by_cluster[cluster.cluster_id]
+                    ],
+                    "cluster_states": {
+                        cluster.cluster_id: server.server_id
+                        in server_ids_by_cluster[cluster.cluster_id]
+                        for cluster in clusters
+                    },
+                }
+                for server in servers
+            ],
+            "count": len(servers),
+        },
+        table=table,
     )
 
 
@@ -188,7 +402,7 @@ def apps_add_custom(
     explanation: str = "Custom app",
 ):
     runtime = _state(ctx)
-    _backup_if_needed(runtime)
+    backup_path = _backup_if_needed(runtime)
     item = runtime.store.create_app(
         name,
         ai_agent_id=ai_agent_id,
@@ -196,15 +410,33 @@ def apps_add_custom(
         config_key=config_key,
         explanation=explanation,
     )
-    console.print(f"Created app {item.name} ({item.app_id})")
+    _emit(
+        runtime,
+        payload={
+            "status": "ok",
+            "action": "apps.add-custom",
+            "backup_path": backup_path,
+            "app": _app_payload(item),
+        },
+        text=f"Created app {item.name}",
+    )
 
 
 @apps_app.command("set-active-cluster", no_args_is_help=True)
 def apps_set_active_cluster(ctx: typer.Context, app_ref: str, cluster_ref: str):
     runtime = _state(ctx)
-    _backup_if_needed(runtime)
+    backup_path = _backup_if_needed(runtime)
     item = runtime.store.set_active_cluster(app_ref, cluster_ref)
-    console.print(f"{item.name} active cluster -> {item.active_cluster_id}")
+    _emit(
+        runtime,
+        payload={
+            "status": "ok",
+            "action": "apps.set-active-cluster",
+            "backup_path": backup_path,
+            "app": _app_payload(item),
+        },
+        text=f"{item.name} active cluster -> {cluster_ref}",
+    )
 
 
 @clusters_app.command("list")
@@ -215,39 +447,58 @@ def clusters_list(ctx: typer.Context, app_name: str | None = typer.Option(None, 
         runtime.store.list_clusters(app_name),
         key=lambda item: (apps_by_pk.get(item.app_pk, ""), item.name.casefold()),
     )
-    table = Table("App", "Name", "Cluster ID", "Enabled")
+    table = Table("App", "Name", "Enabled")
     for cluster in clusters:
         table.add_row(
             apps_by_pk.get(cluster.app_pk, str(cluster.app_pk)),
             cluster.name,
-            cluster.cluster_id,
             str(len(cluster.enabled_server_ids)),
         )
-    console.print(table)
+    _emit(
+        runtime,
+        payload={
+            "clusters": [
+                _cluster_payload(cluster, apps_by_pk.get(cluster.app_pk, str(cluster.app_pk)))
+                for cluster in clusters
+            ],
+            "count": len(clusters),
+        },
+        table=table,
+    )
 
 
 @clusters_app.command("show", no_args_is_help=True)
 def clusters_show(ctx: typer.Context, cluster_ref: str, app_name: str = typer.Option(..., "--app")):
     runtime = _state(ctx)
     cluster = runtime.store.get_cluster(app_name, cluster_ref)
-    console.print_json(
-        json.dumps(
-            {
-                "name": cluster.name,
-                "cluster_id": cluster.cluster_id,
-                "app_pk": cluster.app_pk,
-                "enabled_server_ids": cluster.enabled_server_ids,
-            }
-        )
+    _emit(
+        runtime,
+        payload=_cluster_payload(cluster, app_name),
+        table=_kv_table(
+            [
+                ("App", app_name),
+                ("Name", cluster.name),
+                ("Enabled Servers", str(len(cluster.enabled_server_ids))),
+            ]
+        ),
     )
 
 
 @clusters_app.command("create", no_args_is_help=True)
 def clusters_create(ctx: typer.Context, name: str, app_name: str = typer.Option(..., "--app")):
     runtime = _state(ctx)
-    _backup_if_needed(runtime)
+    backup_path = _backup_if_needed(runtime)
     cluster = runtime.store.create_cluster(app_name, name)
-    console.print(f"Created cluster {cluster.name} ({cluster.cluster_id})")
+    _emit(
+        runtime,
+        payload={
+            "status": "ok",
+            "action": "clusters.create",
+            "backup_path": backup_path,
+            "cluster": _cluster_payload(cluster, app_name),
+        },
+        text=f"Created cluster {cluster.name} for {app_name}",
+    )
 
 
 @clusters_app.command("rename", no_args_is_help=True)
@@ -258,9 +509,18 @@ def clusters_rename(
     app_name: str = typer.Option(..., "--app"),
 ):
     runtime = _state(ctx)
-    _backup_if_needed(runtime)
+    backup_path = _backup_if_needed(runtime)
     cluster = runtime.store.rename_cluster(app_name, cluster_ref, new_name)
-    console.print(f"Renamed cluster -> {cluster.name}")
+    _emit(
+        runtime,
+        payload={
+            "status": "ok",
+            "action": "clusters.rename",
+            "backup_path": backup_path,
+            "cluster": _cluster_payload(cluster, app_name),
+        },
+        text=f"Renamed cluster -> {cluster.name}",
+    )
 
 
 @clusters_app.command("delete", no_args_is_help=True)
@@ -270,35 +530,66 @@ def clusters_delete(
     app_name: str = typer.Option(..., "--app"),
 ):
     runtime = _state(ctx)
-    _backup_if_needed(runtime)
+    backup_path = _backup_if_needed(runtime)
     runtime.store.delete_cluster(app_name, cluster_ref)
-    console.print(f"Deleted cluster {cluster_ref}")
+    _emit(
+        runtime,
+        payload={
+            "status": "ok",
+            "action": "clusters.delete",
+            "backup_path": backup_path,
+            "app_name": app_name,
+            "cluster_ref": cluster_ref,
+        },
+        text=f"Deleted cluster {cluster_ref}",
+    )
 
 
 @servers_app.command("list")
 def servers_list(ctx: typer.Context, source: str | None = typer.Option(None, "--source")):
     runtime = _state(ctx)
-    table = Table("Name", "ID", "Source", "Type", "Command", "URL")
+    items = []
+    table = Table("Name", "Source", "Type", "Command", "URL")
     for item in runtime.store.list_servers():
         if source and item.source.casefold() != source.casefold():
             continue
+        items.append(item)
         table.add_row(
             item.name,
-            item.server_id,
             item.source,
             item.server_type,
             item.command or "",
             item.url or "",
         )
-    console.print(table)
+    _emit(
+        runtime,
+        payload={"servers": [_server_payload(item) for item in items], "count": len(items)},
+        table=table,
+    )
 
 
 @servers_app.command("show", no_args_is_help=True)
 def servers_show(ctx: typer.Context, server_ref: str):
     runtime = _state(ctx)
     item = runtime.store.get_server(server_ref)
-    console.print_json(
-        json.dumps(server_to_config_dict(item) | {"name": item.name, "server_id": item.server_id})
+    _emit(
+        runtime,
+        payload=_server_payload(item),
+        table=_kv_table(
+            [
+                ("Name", item.name),
+                ("Source", item.source),
+                ("Type", item.server_type),
+                ("Command", item.command or ""),
+                ("URL", item.url or ""),
+                ("Version", item.version or ""),
+                ("Args", _stringify(item.args)),
+                ("Env", _stringify(item.env)),
+                ("Headers", _stringify(item.headers)),
+                ("Parameters", _stringify(item.parameters)),
+                ("Custom Fields", _stringify(item.custom_fields)),
+            ]
+        ),
     )
 
 
@@ -318,7 +609,7 @@ def servers_add(
     server_id: str | None = typer.Option(None, "--server-id"),
 ):
     runtime = _state(ctx)
-    _backup_if_needed(runtime)
+    backup_path = _backup_if_needed(runtime)
     item = runtime.store.add_server(
         name=name,
         command=command,
@@ -332,7 +623,16 @@ def servers_add(
         version=version,
         server_id=server_id,
     )
-    console.print(f"Added server {item.name} ({item.server_id})")
+    _emit(
+        runtime,
+        payload={
+            "status": "ok",
+            "action": "servers.add",
+            "backup_path": backup_path,
+            "server": _server_payload(item),
+        },
+        text=f"Added server {item.name}",
+    )
 
 
 @servers_app.command("update", no_args_is_help=True)
@@ -350,7 +650,7 @@ def servers_update(
     version: str | None = typer.Option(None, "--version"),
 ):
     runtime = _state(ctx)
-    _backup_if_needed(runtime)
+    backup_path = _backup_if_needed(runtime)
     item = runtime.store.update_server(
         server_ref,
         name=name,
@@ -363,15 +663,33 @@ def servers_update(
         source=source,
         version=version,
     )
-    console.print(f"Updated server {item.name} ({item.server_id})")
+    _emit(
+        runtime,
+        payload={
+            "status": "ok",
+            "action": "servers.update",
+            "backup_path": backup_path,
+            "server": _server_payload(item),
+        },
+        text=f"Updated server {item.name}",
+    )
 
 
 @servers_app.command("delete", no_args_is_help=True)
 def servers_delete(ctx: typer.Context, server_ref: str):
     runtime = _state(ctx)
-    _backup_if_needed(runtime)
+    backup_path = _backup_if_needed(runtime)
     runtime.store.delete_server(server_ref)
-    console.print(f"Deleted server {server_ref}")
+    _emit(
+        runtime,
+        payload={
+            "status": "ok",
+            "action": "servers.delete",
+            "backup_path": backup_path,
+            "server_ref": server_ref,
+        },
+        text=f"Deleted server {server_ref}",
+    )
 
 
 @servers_app.command("enable", no_args_is_help=True)
@@ -382,9 +700,19 @@ def servers_enable(
     app_name: str = typer.Option(..., "--app"),
 ):
     runtime = _state(ctx)
-    _backup_if_needed(runtime)
+    backup_path = _backup_if_needed(runtime)
     updated = runtime.store.enable_servers(app_name, cluster, server_ref)
-    console.print(f"{updated.name}: enabled {len(updated.enabled_server_ids)} servers")
+    _emit(
+        runtime,
+        payload={
+            "status": "ok",
+            "action": "servers.enable",
+            "backup_path": backup_path,
+            "cluster": _cluster_payload(updated, app_name),
+            "server_refs": server_ref,
+        },
+        text=f"{updated.name}: enabled {len(updated.enabled_server_ids)} servers",
+    )
 
 
 @servers_app.command("enable-many", no_args_is_help=True)
@@ -394,16 +722,26 @@ def servers_enable_many(
     target: list[str] = typer.Option(..., "--target"),
 ):
     runtime = _state(ctx)
-    _backup_if_needed(runtime)
+    backup_path = _backup_if_needed(runtime)
     applied_targets: list[str] = []
     for raw_target in target:
         app_name, cluster_name = _parse_target(raw_target)
         runtime.store.enable_servers(app_name, cluster_name, server_ref)
         applied_targets.append(f"{app_name}/{cluster_name}")
-
-    console.print(
-        f"Enabled {len(server_ref)} server(s) across {len(applied_targets)} target cluster(s): "
-        + ", ".join(applied_targets)
+    _emit(
+        runtime,
+        payload={
+            "status": "ok",
+            "action": "servers.enable-many",
+            "backup_path": backup_path,
+            "server_refs": server_ref,
+            "targets": applied_targets,
+            "count": len(applied_targets),
+        },
+        text=(
+            f"Enabled {len(server_ref)} server(s) across {len(applied_targets)} target cluster(s): "
+            + ", ".join(applied_targets)
+        ),
     )
 
 
@@ -415,9 +753,19 @@ def servers_disable(
     app_name: str = typer.Option(..., "--app"),
 ):
     runtime = _state(ctx)
-    _backup_if_needed(runtime)
+    backup_path = _backup_if_needed(runtime)
     updated = runtime.store.disable_servers(app_name, cluster, server_ref)
-    console.print(f"{updated.name}: enabled {len(updated.enabled_server_ids)} servers")
+    _emit(
+        runtime,
+        payload={
+            "status": "ok",
+            "action": "servers.disable",
+            "backup_path": backup_path,
+            "cluster": _cluster_payload(updated, app_name),
+            "server_refs": server_ref,
+        },
+        text=f"{updated.name}: enabled {len(updated.enabled_server_ids)} servers",
+    )
 
 
 @market_app.command("list")
@@ -425,9 +773,11 @@ def market_list(ctx: typer.Context, category: str | None = typer.Option(None, "-
     runtime = _state(ctx)
     tools = load_market_catalog(runtime.resources_dir)
     table = Table("Name", "Category", "Version", "Connections", "GitHub")
+    filtered_tools = []
     for tool in tools:
         if category and tool.category.casefold() != category.casefold():
             continue
+        filtered_tools.append(tool)
         table.add_row(
             tool.name,
             tool.category,
@@ -435,27 +785,55 @@ def market_list(ctx: typer.Context, category: str | None = typer.Option(None, "-
             ", ".join(connection.type for connection in tool.connections),
             tool.github_url or "",
         )
-    console.print(table)
+    _emit(
+        runtime,
+        payload={
+            "tools": [
+                {
+                    "name": tool.name,
+                    "category": tool.category,
+                    "catalog_id": tool.catalog_id,
+                    "version": tool.version,
+                    "github_url": tool.github_url,
+                    "connections": [asdict(connection) for connection in tool.connections],
+                }
+                for tool in filtered_tools
+            ],
+            "count": len(filtered_tools),
+        },
+        table=table,
+    )
 
 
 @market_app.command("show", no_args_is_help=True)
 def market_show(ctx: typer.Context, tool_ref: str):
     runtime = _state(ctx)
     tool = find_market_tool(load_market_catalog(runtime.resources_dir), tool_ref)
-    console.print_json(
-        json.dumps(
-            {
-                "name": tool.name,
-                "category": tool.category,
-                "catalog_id": tool.catalog_id,
-                "version": tool.version,
-                "author": tool.author,
-                "explanation": tool.explanation,
-                "github_url": tool.github_url,
-                "package_url": tool.package_url,
-                "connections": [connection.__dict__ for connection in tool.connections],
-            }
-        )
+    _emit(
+        runtime,
+        payload={
+            "name": tool.name,
+            "category": tool.category,
+            "catalog_id": tool.catalog_id,
+            "version": tool.version,
+            "author": tool.author,
+            "explanation": tool.explanation,
+            "github_url": tool.github_url,
+            "package_url": tool.package_url,
+            "connections": [asdict(connection) for connection in tool.connections],
+        },
+        table=_kv_table(
+            [
+                ("Name", tool.name),
+                ("Category", tool.category),
+                ("Version", tool.version or ""),
+                ("Author", tool.author or ""),
+                ("GitHub", tool.github_url or ""),
+                ("Package", tool.package_url or ""),
+                ("Connections", ", ".join(connection.type for connection in tool.connections)),
+                ("Explanation", tool.explanation or ""),
+            ]
+        ),
     )
 
 
@@ -470,7 +848,7 @@ def market_install(
     version: str | None = typer.Option(None, "--version"),
 ):
     runtime = _state(ctx)
-    _backup_if_needed(runtime)
+    backup_path = _backup_if_needed(runtime)
     tool = find_market_tool(load_market_catalog(runtime.resources_dir), tool_ref)
     connection = choose_connection(tool, connection_type)
     materialized = materialize_connection(tool, connection, _parse_pairs(parameter or []), version)
@@ -487,10 +865,26 @@ def market_install(
         server_id=generate_server_id(f"{tool.catalog_id}|{tool.name}"),
     )
     runtime.store.enable_servers(app_name, cluster, [server.server_id])
-    console.print(f"Installed {server.name} ({server.server_id}) into {app_name}/{cluster}")
+    _emit(
+        runtime,
+        payload={
+            "status": "ok",
+            "action": "market.install",
+            "backup_path": backup_path,
+            "app_name": app_name,
+            "cluster_name": cluster,
+            "tool": {
+                "name": tool.name,
+                "catalog_id": tool.catalog_id,
+                "connection_type": connection.type,
+            },
+            "server": _server_payload(server),
+        },
+        text=f"Installed {server.name} into {app_name}/{cluster}",
+    )
 
 
-def _sync_single_app(runtime: Runtime, app_ref: str) -> str:
+def _sync_single_app(runtime: Runtime, app_ref: str) -> dict[str, object]:
     target = runtime.store.get_app(app_ref)
     if not target.config_path or not target.config_key:
         raise typer.BadParameter(f"App has no config target: {target.name}")
@@ -501,22 +895,38 @@ def _sync_single_app(runtime: Runtime, app_ref: str) -> str:
     servers = runtime.store.get_servers_by_ids(cluster.enabled_server_ids)
     output = enabled_servers_to_config(target, servers)
     write_config_map(Path(target.config_path).expanduser(), target.config_key, output)
-    return f"Synced {target.name} -> {target.config_path}"
+    return {
+        "app": _app_payload(target),
+        "cluster": _cluster_payload(cluster, target.name),
+        "config_path": target.config_path,
+        "config_key": target.config_key,
+        "server_count": len(servers),
+    }
 
 
 @sync_app.command("app", no_args_is_help=True)
 def sync_one(ctx: typer.Context, app_ref: str):
     runtime = _state(ctx)
-    message = _sync_single_app(runtime, app_ref)
-    console.print(message)
+    payload = _sync_single_app(runtime, app_ref)
+    _emit(
+        runtime,
+        payload={"status": "ok", "action": "sync.app"} | payload,
+        text=f"Synced {payload['app']['name']} -> {payload['config_path']}",
+    )
 
 
 @sync_app.command("all")
 def sync_all(ctx: typer.Context):
     runtime = _state(ctx)
+    synced = []
     for item in runtime.store.list_apps():
         if item.config_path and item.config_key and item.active_cluster_id:
-            console.print(_sync_single_app(runtime, item.name))
+            synced.append(_sync_single_app(runtime, item.name))
+    _emit(
+        runtime,
+        payload={"synced": synced, "count": len(synced)},
+        text="\n".join(f"Synced {item['app']['name']} -> {item['config_path']}" for item in synced),
+    )
 
 
 def _import_mapping(
@@ -558,9 +968,19 @@ def _import_mapping(
 @import_app.command("app", no_args_is_help=True)
 def import_from_app(ctx: typer.Context, app_ref: str):
     runtime = _state(ctx)
-    _backup_if_needed(runtime)
+    backup_path = _backup_if_needed(runtime)
     count = _import_mapping(runtime, app_ref)
-    console.print(f"Imported {count} server(s) from {app_ref}")
+    _emit(
+        runtime,
+        payload={
+            "status": "ok",
+            "action": "import.app",
+            "backup_path": backup_path,
+            "app_ref": app_ref,
+            "imported_count": count,
+        },
+        text=f"Imported {count} server(s) from {app_ref}",
+    )
 
 
 @import_app.command("file", no_args_is_help=True)
@@ -571,9 +991,21 @@ def import_from_file(
     key: str = typer.Option(..., "--key"),
 ):
     runtime = _state(ctx)
-    _backup_if_needed(runtime)
+    backup_path = _backup_if_needed(runtime)
     count = _import_mapping(runtime, app_ref, path, key)
-    console.print(f"Imported {count} server(s) from {path}")
+    _emit(
+        runtime,
+        payload={
+            "status": "ok",
+            "action": "import.file",
+            "backup_path": backup_path,
+            "app_ref": app_ref,
+            "path": str(path),
+            "key": key,
+            "imported_count": count,
+        },
+        text=f"Imported {count} server(s) from {path}",
+    )
 
 
 @app.command("doctor")
@@ -581,15 +1013,17 @@ def doctor(ctx: typer.Context):
     runtime = _state(ctx)
     tools = load_market_catalog(runtime.resources_dir) if runtime.resources_dir.exists() else []
     table = Table("Check", "Value")
-    table.add_row("DB path", str(runtime.store.db_path))
-    table.add_row("DB exists", str(runtime.store.db_path.exists()))
-    table.add_row("Resources dir", str(runtime.resources_dir))
-    table.add_row("Resources dir exists", str(runtime.resources_dir.exists()))
-    table.add_row("Market tool count", str(len(tools)))
-    table.add_row(
-        "App count", str(len(runtime.store.list_apps())) if runtime.store.db_path.exists() else "0"
-    )
-    console.print(table)
+    checks = {
+        "db_path": str(runtime.store.db_path),
+        "db_exists": runtime.store.db_path.exists(),
+        "resources_dir": str(runtime.resources_dir),
+        "resources_dir_exists": runtime.resources_dir.exists(),
+        "market_tool_count": len(tools),
+        "app_count": len(runtime.store.list_apps()) if runtime.store.db_path.exists() else 0,
+    }
+    for key, value in checks.items():
+        table.add_row(key, str(value))
+    _emit(runtime, payload={"checks": checks}, table=table)
 
 
 def main() -> None:

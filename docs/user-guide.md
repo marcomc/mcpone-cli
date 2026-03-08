@@ -93,6 +93,13 @@ Supported keys:
 `backup_on_write = true` causes the CLI to create a timestamped SQLite backup
 before write operations.
 
+For programmatic use, add `--json` before the command group:
+
+```bash
+mcpone-cli --json apps list
+mcpone-cli --json apps matrix Codex
+```
+
 ## Read-Only Examples
 
 List apps:
@@ -105,6 +112,18 @@ Show one app:
 
 ```bash
 mcpone-cli apps show Codex
+```
+
+Show the app-wide server/cluster matrix for one app:
+
+```bash
+mcpone-cli apps matrix Codex
+```
+
+Show only servers enabled in at least one cluster for the app:
+
+```bash
+mcpone-cli apps matrix Codex --enabled-only
 ```
 
 List clusters for one app:
