@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mcpone-cli"
+version = "0.1.0"
+description = "Command-line interface for managing McpOne apps, clusters, servers, market catalog, and agent config sync"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "Marco Massari Calderone", email = "marco@marcomc.com" }]
+maintainers = [{ name = "Marco Massari Calderone", email = "marco@marcomc.com" }]
+keywords = ["mcp", "mcpone", "cli", "sqlite", "codex", "claude"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: MacOS",
+  "Environment :: Console",
+  "Topic :: Utilities",
+  "Topic :: Software Development",
+]
+dependencies = [
+  "typer>=0.16.0",
+  "rich>=14.0.0",
+  "tomli-w>=1.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3.0",
+  "ruff>=0.12.0",
+  "pymarkdownlnt>=0.9.20",
+]
+
+[project.scripts]
+mcpone-cli = "mcpone_cli.cli:main"
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["B008", "E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,3 @@
+db_path = "~/Library/Containers/com.ryankolter9.McpOne/Data/Library/Application Support/McpOne/McpOne.sqlite"
+resources_dir = "/Applications/McpOne.app/Contents/Resources"
+backup_on_write = true
